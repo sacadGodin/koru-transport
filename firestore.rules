@@ -1,0 +1,142 @@
+rules_version='2'
+
+// Who can do what:
+//   Visitors (not signed in): send feedback, read published feedback, and
+//   read ONE tracking document if they know its secret id (the tracking
+//   link). Bookings are created by the createBooking Cloud Function, never
+//   by the browser directly.
+//   Drivers (signed in AND listed in drivers/{uid} with active == true):
+//   read the bookings assigned to them and move the trip forward.
+//   Staff (signed in AND listed in staff/{uid}): everything else.
+//
+// Data model (fields the rules rely on):
+//   staff/{uid}            added by hand in the Firebase console
+//   drivers/{uid}          name, phone, vehicle, email, active (bool)
+//                          created by the createDriver Cloud Function
+//   bookings/{ref}         ref, patient, phone, type, from, branch, date,
+//                          time, needs, notes, pickup, stage, createdAt,
+//                          vehicle, driver, driverUid, trip, driverLocation
+//   bookingSecrets/{ref}   code hash, tracking token (functions only)
+//   tracking/{token}       safe copy of a booking for the patient
+//                          (written by the syncTracking function only)
+//   counters/bookings      next booking number (functions only)
+//   feedback/{id}          rating, type, comment, date, name, ref, published
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isStaff() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/staff/$(request.auth.uid));
+    }
+
+    function isDriver() {
+      return request.auth != null
+        && get(/databases/$(database)/documents/drivers/$(request.auth.uid))
+             .data.get('active', false) == true;
+    }
+
+    // Staff list. Added by hand in the Firebase console (document id = the
+    // user's UID from Authentication). Each person may only check their own.
+    match /staff/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    // Driver accounts. Staff see all of them and may switch a driver on or
+    // off; a driver may read their own profile.
+    match /drivers/{uid} {
+      allow read: if isStaff()
+        || (request.auth != null && request.auth.uid == uid);
+      allow update: if isStaff()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['active'])
+        && request.resource.data.active is bool;
+      allow create, delete: if false;
+    }
+
+    // Only Cloud Functions touch these.
+    match /counters/{id} {
+      allow read, write: if false;
+    }
+    match /bookingSecrets/{ref} {
+      allow read, write: if false;
+    }
+
+    // Live status for the patient. Only a direct get by the secret id;
+    // listing the collection is never allowed.
+    match /tracking/{token} {
+      allow get: if true;
+      allow list, write: if false;
+    }
+
+    // Trip steps a driver goes through, and the step that comes after each.
+    function nextTrip(trip) {
+      return {
+        'assigned': 'enRoute',
+        'enRoute': 'arrived',
+        'arrived': 'onBoard',
+        'onBoard': 'completed'
+      }[trip];
+    }
+
+    function isValidBooking(b) {
+      return b.ref is string
+        && b.stage in ['newRequest', 'confirmed', 'reserved', 'arranged']
+        && b.type in ['ambulance', 'wheelchair', 'standard', 'airport']
+        && b.date is timestamp
+        && b.time is string && b.time.size() == 5
+        && (b.vehicle == null || (b.vehicle is string && b.vehicle.size() <= 50))
+        && (b.driver == null || (b.driver is string && b.driver.size() <= 200))
+        && (b.get('trip', null) == null
+            || b.trip in ['assigned', 'enRoute', 'arrived', 'onBoard', 'completed'])
+        && (b.get('driverLocation', null) == null || b.driverLocation is latlng);
+    }
+
+    match /bookings/{ref} {
+      // Bookings are only created by the createBooking function.
+      allow create: if false;
+      allow delete: if isStaff();
+
+      allow read: if isStaff()
+        || (isDriver() && resource.data.get('driverUid', null) == request.auth.uid);
+
+      // Staff move bookings through the stages. They may not change the
+      // reference, the patient's own details or the creation time, and a
+      // driver they assign must be an active driver.
+      allow update: if isStaff()
+        && isValidBooking(request.resource.data)
+        && !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['ref', 'patient', 'phone', 'from', 'pickup', 'needs',
+                       'notes', 'createdAt'])
+        && (request.resource.data.get('driverUid', null) == null
+            || get(/databases/$(database)/documents/drivers/$(request.resource.data.driverUid))
+                 .data.get('active', false) == true);
+
+      // The assigned driver may only move the trip one step forward and
+      // share their location, on an arranged booking.
+      allow update: if isDriver()
+        && resource.data.get('driverUid', null) == request.auth.uid
+        && resource.data.stage == 'arranged'
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['trip', 'tripUpdatedAt', 'driverLocation'])
+        && isValidBooking(request.resource.data)
+        && (request.resource.data.trip == resource.data.trip
+            || request.resource.data.trip == nextTrip(resource.data.trip))
+        && (request.resource.data.trip == resource.data.trip
+            || request.resource.data.tripUpdatedAt == request.time);
+    }
+
+    match /feedback/{id} {
+      allow read: if resource.data.published == true || isStaff();
+      allow update, delete: if isStaff();
+
+      // New comments start hidden until staff publish them.
+      allow create: if request.resource.data.published == false
+        && request.resource.data.rating is int
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5
+        && request.resource.data.comment is string
+        && request.resource.data.comment.size() <= 2000;
+    }
+  }
+}
