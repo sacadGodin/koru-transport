@@ -71,6 +71,29 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
     });
   }
 
+  // Emails a "choose a new password" link to the address in the email field.
+  Future<void> _forgotPassword() async {
+    final email = _email.text.trim();
+    if (email.isEmpty) {
+      setState(() => _error = context.t(
+          'Type your email first, then tap "Forgot password?".',
+          'Önce e-postanızı yazın, sonra "Şifremi unuttum" seçin.'));
+      return;
+    }
+    setState(() => _error = null);
+    final sent = await staffAuth.sendPasswordReset(email);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(sent
+            ? context.t(
+                'If $email has an account, a link to choose a new password '
+                    'has been sent to it.',
+                '$email adresine bağlı bir hesap varsa, yeni şifre '
+                    'belirleme bağlantısı gönderildi.')
+            : context.t('Could not send the email. Please try again.',
+                'E-posta gönderilemedi. Lütfen tekrar deneyin.'))));
+  }
+
   @override
   Widget build(BuildContext context) {
     final tablet = Responsive.isTablet(context);
@@ -172,6 +195,14 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                       onPressed: () =>
                           setState(() => _hidePassword = !_hidePassword),
                     ),
+                  ),
+                ),
+                Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: TextButton(
+                    onPressed: _busy ? null : _forgotPassword,
+                    child: Text(
+                        context.t('Forgot password?', 'Şifremi unuttum')),
                   ),
                 ),
                 if (_error != null) ...[

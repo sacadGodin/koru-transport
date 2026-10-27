@@ -78,6 +78,22 @@ class StaffAuth extends ChangeNotifier {
     }
   }
 
+  // Emails a link for choosing a new password. Returns false if it could not
+  // be sent. For privacy Firebase does not say whether the email has an
+  // account, so a wrong email also returns true.
+  Future<bool> sendPasswordReset(String email) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email);
+      return true;
+    } on FirebaseAuthException catch (e) {
+      debugPrint('Password reset failed: ${e.code}');
+      return e.code == 'user-not-found';
+    } catch (e) {
+      debugPrint('Password reset failed: $e');
+      return false;
+    }
+  }
+
   Future<void> signOut() async {
     await _auth.signOut();
     isStaff = false;
