@@ -1,27 +1,30 @@
 rules_version='2'
 
 // Who can do what:
-//   Visitors (not signed in): send feedback and contact messages, read
-//   published feedback and the free bus routes, and
-//   read ONE tracking document if they know its secret id (the tracking
-//   link). Bookings are created by the createBooking Cloud Function, never
-//   by the browser directly.
+//   Visitors (not signed in): book a ride, send feedback and contact
+//   messages, read published feedback and the free bus routes, and read ONE
+//   tracking document if they know its secret id. That id is worked out
+//   from the booking reference + tracking code, so only the patient has it.
 //   Drivers (signed in AND listed in drivers/{uid} with active == true):
 //   read the bookings assigned to them and move the trip forward.
 //   Staff (signed in AND listed in staff/{uid}): everything else.
 //
+// There is no server code (no Cloud Functions): the website writes
+// everything itself, so these rules are what keeps the data safe. They
+// check every write, including the booking number and the tracking copy.
+//
 // Data model (fields the rules rely on):
 //   staff/{uid}            added by hand in the Firebase console
-//   drivers/{uid}          name, phone, vehicle, email, active (bool)
-//                          created, edited and deleted by the
-//                          create/update/deleteDriver Cloud Functions
+//   drivers/{uid}          name, phone, vehicle, email, active (bool),
+//                          createdAt. Created, edited and deleted by staff
 //   bookings/{ref}         ref, patient, phone, type, from, branch, date,
 //                          time, needs, notes, pickup, stage, createdAt,
-//                          vehicle, driver, driverUid, trip, driverLocation
-//   bookingSecrets/{ref}   code hash, tracking token (functions only)
-//   tracking/{token}       safe copy of a booking for the patient
-//                          (written by the syncTracking function only)
-//   counters/bookings      next booking number (functions only)
+//                          vehicle, driver, driverUid, trip, driverLocation,
+//                          trackingId
+//   tracking/{trackingId}  safe copy of a booking for the patient. The id
+//                          is sha256("<ref>:<code>") in hex. Written in the
+//                          same step as every change to its booking
+//   counters/bookings      next booking number
 //   messages/{id}          name, reply, topic, reference, message, date,
 //                          handled (contact form)
 //   feedback/{id}          rating, type, comment, date, name, ref, published
@@ -41,6 +44,14 @@ service cloud.firestore {
              .data.get('active', false) == true;
     }
 
+    function path(collection, id) {
+      return /databases/$(database)/documents/$(collection)/$(id);
+    }
+
+    function text(value, max) {
+      return value is string && value.trim().size() > 0 && value.size() <= max;
+    }
+
     // Staff list. Added by hand in the Firebase console (document id = the
     // user's UID from Authentication). Each person may only check their own.
     match /staff/{uid} {
@@ -48,31 +59,100 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Driver accounts. Staff see all of them and may switch a driver on or
-    // off; a driver may read their own profile.
+    // Driver accounts. Staff create the sign-in account from the dashboard
+    // and then this profile; only staff may add, edit or remove one, so
+    // signing up an account on your own never makes you a driver.
+    function isDriverProfile(d) {
+      return text(d.name, 200)
+        && text(d.phone, 50)
+        && d.vehicle is string && d.vehicle.size() <= 50
+        && text(d.email, 200)
+        && d.active is bool;
+    }
+
     match /drivers/{uid} {
       allow read: if isStaff()
         || (request.auth != null && request.auth.uid == uid);
+      allow create: if isStaff()
+        && request.resource.data.keys().hasOnly(
+             ['name', 'phone', 'vehicle', 'email', 'active', 'createdAt'])
+        && isDriverProfile(request.resource.data)
+        && request.resource.data.active == true
+        && request.resource.data.createdAt == request.time;
       allow update: if isStaff()
         && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['active'])
-        && request.resource.data.active is bool;
-      allow create, delete: if false;
+             .hasOnly(['name', 'phone', 'vehicle', 'active'])
+        && isDriverProfile(request.resource.data);
+      allow delete: if isStaff();
     }
 
-    // Only Cloud Functions touch these.
+    // Next booking number. Anyone may read it (it is only a number). It
+    // only ever goes up by one, in the same step that creates the booking
+    // with the number it gives out.
     match /counters/{id} {
-      allow read, write: if false;
+      allow read: if id == 'bookings';
+      allow create: if id == 'bookings'
+        && request.resource.data.keys().hasOnly(['next'])
+        && request.resource.data.next == 1002
+        && !exists(path('bookings', 'KR-1001'))
+        && existsAfter(path('bookings', 'KR-1001'));
+      allow update: if id == 'bookings'
+        && request.resource.data.keys().hasOnly(['next'])
+        && request.resource.data.next == resource.data.next + 1
+        && !exists(path('bookings', 'KR-' + string(resource.data.next)))
+        && existsAfter(path('bookings', 'KR-' + string(resource.data.next)));
+      allow delete: if false;
     }
-    match /bookingSecrets/{ref} {
-      allow read, write: if false;
+
+    // The safe parts of a booking (no name, phone, address or notes; the
+    // driver's first name only; their location only while driving). Must
+    // match the booking exactly as it is after the same write.
+    function isTrackingOf(t, b) {
+      return t.keys().hasOnly(['ref', 'type', 'branch', 'date', 'time',
+             'stage', 'trip', 'driver', 'vehicle', 'driverLocation',
+             'updatedAt'])
+        && t.ref == b.ref
+        && t.type == b.type
+        && t.branch == b.branch
+        && t.date == b.date
+        && t.time == b.time
+        && t.stage == b.stage
+        && t.trip == b.get('trip', null)
+        && t.vehicle == b.get('vehicle', null)
+        && (t.driver == null || t.driver == b.driver.split(' ')[0])
+        && (t.driverLocation == null
+            || (b.get('trip', null) in ['enRoute', 'onBoard']
+                && t.driverLocation == b.get('driverLocation', null)))
+        && t.updatedAt == request.time;
     }
 
     // Live status for the patient. Only a direct get by the secret id;
     // listing the collection is never allowed.
     match /tracking/{token} {
       allow get: if true;
-      allow list, write: if false;
+      allow list: if false;
+
+      // Made by the patient's browser together with the booking.
+      allow create: if request.resource.data.ref is string
+        && !exists(path('bookings', request.resource.data.ref))
+        && getAfter(path('bookings', request.resource.data.ref))
+             .data.trackingId == token
+        && isTrackingOf(request.resource.data,
+             getAfter(path('bookings', request.resource.data.ref)).data);
+
+      // Kept up to date by staff, or by the booking's driver, whenever
+      // they change the booking.
+      allow update: if (isStaff()
+          || (isDriver()
+              && getAfter(path('bookings', resource.data.ref))
+                   .data.get('driverUid', null) == request.auth.uid))
+        && request.resource.data.ref == resource.data.ref
+        && getAfter(path('bookings', resource.data.ref))
+             .data.trackingId == token
+        && isTrackingOf(request.resource.data,
+             getAfter(path('bookings', resource.data.ref)).data);
+
+      allow delete: if isStaff();
     }
 
     // Trip steps a driver goes through, and the step that comes after each.
@@ -98,25 +178,76 @@ service cloud.firestore {
         && (b.get('driverLocation', null) == null || b.driverLocation is latlng);
     }
 
+    // The booking form as the patient sends it: checked field by field,
+    // starting as a new request with no driver.
+    function isNewBooking(b, ref) {
+      return b.keys().hasOnly(['ref', 'patient', 'phone', 'type', 'from',
+             'branch', 'date', 'time', 'needs', 'notes', 'pickup', 'stage',
+             'vehicle', 'driver', 'driverUid', 'trip', 'driverLocation',
+             'trackingId', 'createdAt'])
+        && b.ref == ref
+        && text(b.patient, 200)
+        && text(b.phone, 50)
+        && b.type in ['ambulance', 'wheelchair', 'standard', 'airport']
+        && text(b.from, 500)
+        && text(b.branch, 200)
+        && b.date is timestamp
+        && b.time is string && b.time.matches('([01][0-9]|2[0-3]):[0-5][0-9]')
+        && b.needs is list && b.needs.size() <= 4
+        && b.needs.hasOnly(['wheelchair', 'stretcher', 'oxygen', 'companion'])
+        && b.notes is string && b.notes.size() <= 2000
+        && (b.pickup == null || b.pickup is latlng)
+        && b.stage == 'newRequest'
+        && b.vehicle == null
+        && b.driver == null
+        && b.driverUid == null
+        && b.trip == null
+        && b.driverLocation == null
+        && b.trackingId is string && b.trackingId.size() == 64
+        && b.createdAt == request.time;
+    }
+
+    // Every change to a booking also refreshes its tracking copy in the
+    // same write, so the patient always sees the latest status.
+    function refreshesTracking(b) {
+      return b.get('trackingId', null) == null
+        || getAfter(path('tracking', b.trackingId)).data.updatedAt
+             == request.time;
+    }
+
     match /bookings/{ref} {
-      // Bookings are only created by the createBooking function.
-      allow create: if false;
+      // Anyone may book. The number must be the counter's next one (and the
+      // counter goes up in the same write), and the tracking copy is made
+      // with it.
+      allow create: if ref == 'KR-' + string(
+            exists(path('counters', 'bookings'))
+              ? get(path('counters', 'bookings')).data.next
+              : 1001)
+        && getAfter(path('counters', 'bookings')).data.next
+             == (exists(path('counters', 'bookings'))
+                   ? get(path('counters', 'bookings')).data.next
+                   : 1001) + 1
+        && isNewBooking(request.resource.data, ref)
+        && !exists(path('tracking', request.resource.data.trackingId))
+        && existsAfter(path('tracking', request.resource.data.trackingId));
+
       allow delete: if isStaff();
 
       allow read: if isStaff()
         || (isDriver() && resource.data.get('driverUid', null) == request.auth.uid);
 
       // Staff move bookings through the stages. They may not change the
-      // reference, the patient's own details or the creation time, and a
-      // driver they assign must be an active driver.
+      // reference, the patient's own details, the tracking id or the
+      // creation time, and a driver they assign must be an active driver.
       allow update: if isStaff()
         && isValidBooking(request.resource.data)
         && !request.resource.data.diff(resource.data).affectedKeys()
               .hasAny(['ref', 'patient', 'phone', 'from', 'pickup', 'needs',
-                       'notes', 'createdAt'])
+                       'notes', 'createdAt', 'trackingId'])
         && (request.resource.data.get('driverUid', null) == null
             || get(/databases/$(database)/documents/drivers/$(request.resource.data.driverUid))
-                 .data.get('active', false) == true);
+                 .data.get('active', false) == true)
+        && refreshesTracking(request.resource.data);
 
       // The assigned driver may only move the trip one step forward and
       // share their location, on an arranged booking.
@@ -129,7 +260,8 @@ service cloud.firestore {
         && (request.resource.data.trip == resource.data.trip
             || request.resource.data.trip == nextTrip(resource.data.trip))
         && (request.resource.data.trip == resource.data.trip
-            || request.resource.data.tripUpdatedAt == request.time);
+            || request.resource.data.tripUpdatedAt == request.time)
+        && refreshesTracking(request.resource.data);
     }
 
     // Contact form messages. Anyone may send one (it starts unanswered);

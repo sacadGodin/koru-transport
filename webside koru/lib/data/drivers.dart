@@ -1,10 +1,11 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
-import 'bookings.dart';
+import '../firebase_options.dart';
 import 'staff_auth.dart';
 
 // One driver account (drivers/{uid} in Firestore).
@@ -60,59 +61,111 @@ class DriverStore extends ChangeNotifier {
     );
   }
 
-  // Creates the driver's sign-in account and profile (createDriver
-  // function). Returns null when it worked, otherwise the error code, e.g.
-  // "already-exists" or "invalid-argument".
+  // Creates the driver's sign-in account and profile. Returns null when it
+  // worked, otherwise the error code, e.g. "already-exists" or
+  // "invalid-argument".
   Future<String?> add({
     required String name,
     required String phone,
     required String vehicle,
     required String email,
     required String password,
-  }) =>
-      _call('createDriver', {
-        'name': name,
-        'phone': phone,
-        'vehicle': vehicle,
-        'email': email,
-        'password': password,
-      });
+  }) async {
+    final String uid;
+    try {
+      uid = await _createAccount(email, password);
+    } on FirebaseAuthException catch (e) {
+      debugPrint('Creating driver account failed: ${e.code}');
+      return switch (e.code) {
+        'email-already-in-use' => 'already-exists',
+        'invalid-email' || 'weak-password' => 'invalid-argument',
+        _ => 'unknown',
+      };
+    } catch (e) {
+      debugPrint('Creating driver account failed: $e');
+      return 'unknown';
+    }
+    return _write(
+        uid,
+        () => _db.doc(uid).set({
+              'name': name,
+              'phone': phone,
+              'vehicle': vehicle,
+              'email': email,
+              'active': true,
+              'createdAt': FieldValue.serverTimestamp(),
+            }));
+  }
 
-  // Saves new details for a driver (updateDriver function). An empty
-  // password keeps the old one. Returns null or the error code, like add.
+  // Saves new details for a driver. The sign-in email cannot be changed
+  // from the website (only in the Firebase console). Returns null or the
+  // error code, like add.
   Future<String?> edit(
     Driver driver, {
     required String name,
     required String phone,
     required String vehicle,
-    required String email,
-    required String password,
   }) =>
-      _call('updateDriver', {
-        'uid': driver.uid,
-        'name': name,
-        'phone': phone,
-        'vehicle': vehicle,
-        'email': email,
-        if (password.isNotEmpty) 'password': password,
-      });
+      _write(
+          driver.uid,
+          () => _db
+              .doc(driver.uid)
+              .update({'name': name, 'phone': phone, 'vehicle': vehicle}));
 
-  // Removes the driver's sign-in account and profile (deleteDriver
-  // function). Returns null or the error code.
-  Future<String?> delete(Driver driver) =>
-      _call('deleteDriver', {'uid': driver.uid});
-
-  Future<String?> _call(String name, Map<String, Object> data) async {
+  // Emails the driver a link to choose a new password. Returns null or the
+  // error code.
+  Future<String?> sendPasswordReset(Driver driver) async {
     try {
-      await cloudFunctions.httpsCallable(name).call(data);
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: driver.email);
       return null;
-    } on FirebaseFunctionsException catch (e) {
-      debugPrint('$name failed: ${e.code} ${e.message}');
+    } on FirebaseAuthException catch (e) {
+      debugPrint('Password reset for ${driver.uid} failed: ${e.code}');
+      return e.code;
+    }
+  }
+
+  // Removes the driver's profile. Without it the account can no longer
+  // sign in to the driver dashboard or see any booking. (The sign-in
+  // account itself stays in Firebase Authentication, where it can be
+  // deleted by hand.) Returns null or the error code.
+  Future<String?> delete(Driver driver) =>
+      _write(driver.uid, () => _db.doc(driver.uid).delete());
+
+  Future<String?> _write(String uid, Future<void> Function() action) async {
+    try {
+      await action();
+      return null;
+    } on FirebaseException catch (e) {
+      debugPrint('Saving driver $uid failed: ${e.code}');
       return e.code;
     } catch (e) {
-      debugPrint('$name failed: $e');
+      debugPrint('Saving driver $uid failed: $e');
       return 'unknown';
     }
+  }
+
+  // Makes a new email + password account without signing the coordinator
+  // out: it signs up through a second copy of Firebase that only lives
+  // for this, then signs that copy out again.
+  Future<String> _createAccount(String email, String password) async {
+    final auth = await (_signUpAuth ??= _openSignUpAuth());
+    final cred = await auth.createUserWithEmailAndPassword(
+        email: email, password: password);
+    await auth.signOut();
+    return cred.user!.uid;
+  }
+
+  Future<FirebaseAuth>? _signUpAuth;
+
+  static Future<FirebaseAuth> _openSignUpAuth() async {
+    final app = await Firebase.initializeApp(
+        name: 'driver-sign-up',
+        options: DefaultFirebaseOptions.currentPlatform);
+    final auth = FirebaseAuth.instanceFor(app: app);
+    if (const bool.fromEnvironment('USE_EMULATORS')) {
+      await auth.useAuthEmulator('localhost', 9099);
+    }
+    return auth;
   }
 
   // Switches a driver on or off.

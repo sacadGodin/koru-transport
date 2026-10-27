@@ -25,6 +25,7 @@ const PORT = 5055;
 
 console.log('Building the flow check web app...');
 execFileSync('flutter', ['build', 'web', '-t', 'tool/flow_check.dart',
+  '--dart-define=USE_EMULATORS=true',
   '-o', out, '--no-tree-shake-icons'], { cwd: site, stdio: 'inherit' });
 
 const types = {

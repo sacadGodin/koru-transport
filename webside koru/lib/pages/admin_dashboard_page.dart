@@ -899,10 +899,11 @@ class _DriverList extends StatelessWidget {
       builder: (context) => AlertDialog(
         title: Text(context.t('Delete driver', 'Sürücüyü sil')),
         content: Text(context.t(
-            '${d.name} will no longer be able to sign in. This cannot be '
-                'undone. Their past trips keep their name.',
-            '${d.name} artık giriş yapamayacak. Bu işlem geri alınamaz. '
-                'Geçmiş yolculuklarda adı kalır.')),
+            '${d.name} will no longer be able to sign in to the driver '
+                'dashboard. This cannot be undone. Their past trips keep '
+                'their name.',
+            '${d.name} artık sürücü paneline giriş yapamayacak. Bu işlem '
+                'geri alınamaz. Geçmiş yolculuklarda adı kalır.')),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -926,8 +927,8 @@ class _DriverList extends StatelessWidget {
 }
 
 // Add / edit driver form: name, phone, usual vehicle, email and a password
-// the coordinator gives to the driver. When editing, the password may be
-// left empty to keep the old one.
+// the coordinator gives to the driver. When editing, the email stays as it
+// is and a new password is chosen by the driver from a reset email.
 class _AddDriverDialog extends StatefulWidget {
   const _AddDriverDialog({this.driver});
 
@@ -977,11 +978,7 @@ class _AddDriverDialogState extends State<_AddDriverDialog> {
     );
     final error = _editing
         ? await driverStore.edit(widget.driver!,
-            name: fields.name,
-            phone: fields.phone,
-            vehicle: fields.vehicle,
-            email: fields.email,
-            password: fields.password)
+            name: fields.name, phone: fields.phone, vehicle: fields.vehicle)
         : await driverStore.add(
             name: fields.name,
             phone: fields.phone,
@@ -1000,10 +997,28 @@ class _AddDriverDialogState extends State<_AddDriverDialog> {
             'Bu e-posta ile zaten bir hesap var.'),
         'invalid-argument' => context.t('Please check the email and password.',
             'Lütfen e-posta ve şifreyi kontrol edin.'),
+        'permission-denied' => context.t(
+            'The account was made, but the profile could not be saved.',
+            'Hesap oluşturuldu ancak profil kaydedilemedi.'),
         _ => context.t('Could not save the driver. Please try again.',
             'Sürücü kaydedilemedi. Lütfen tekrar deneyin.'),
       };
     });
+  }
+
+  // Emails the driver a link to choose a new password.
+  Future<void> _sendReset() async {
+    final error = await driverStore.sendPasswordReset(widget.driver!);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(error == null
+            ? context.t(
+                'A link to choose a new password was sent to '
+                    '${widget.driver!.email}.',
+                'Yeni şifre bağlantısı ${widget.driver!.email} adresine '
+                    'gönderildi.')
+            : context.t(
+                'Could not send the email.', 'E-posta gönderilemedi.'))));
   }
 
   @override
@@ -1043,21 +1058,30 @@ class _AddDriverDialogState extends State<_AddDriverDialog> {
                     context.t('Email (to sign in)', 'E-posta (giriş için)'),
                     child: TextFormField(
                         controller: _email,
+                        // The sign-in email can only be changed in the
+                        // Firebase console.
+                        readOnly: _editing,
                         validator: _required,
                         keyboardType: TextInputType.emailAddress)),
                 const SizedBox(height: 14),
-                FieldLabel(
-                    _editing
-                        ? context.t('New password (leave empty to keep)',
-                            'Yeni şifre (aynı kalsın diye boş bırakın)')
-                        : context.t('First password', 'İlk şifre'),
-                    child: TextFormField(
-                        controller: _password,
-                        validator: (v) => (v ?? '').length < 8 &&
-                                !(_editing && (v ?? '').isEmpty)
-                            ? context.t(
-                                'At least 8 characters', 'En az 8 karakter')
-                            : null)),
+                if (_editing)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: _sendReset,
+                      icon: const Icon(Icons.lock_reset),
+                      label: Text(context.t('Email a new-password link',
+                          'Yeni şifre bağlantısı gönder')),
+                    ),
+                  )
+                else
+                  FieldLabel(context.t('First password', 'İlk şifre'),
+                      child: TextFormField(
+                          controller: _password,
+                          validator: (v) => (v ?? '').length < 8
+                              ? context.t(
+                                  'At least 8 characters', 'En az 8 karakter')
+                              : null)),
                 if (_error != null) ...[
                   const SizedBox(height: 14),
                   Text(_error!,

@@ -8,8 +8,8 @@ environment:
 
 dependencies:
   cloud_firestore: ^7.1.0
-  # Calls the Cloud Functions (booking, tracking code lookup, drivers).
-  cloud_functions: ^7.0.1
+  # Hashes the booking reference + tracking code into the tracking id.
+  crypto: ^3.0.6
   firebase_auth: ^7.0.1
   firebase_core: ^5.1.0
   flutter:

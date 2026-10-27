@@ -85,10 +85,6 @@ class _TrackPageState extends State<TrackPage> {
         LookupResult.notFound => context.t(
             'The reference or tracking code is not correct.',
             'Referans veya takip kodu hatalı.'),
-        LookupResult.locked => context.t(
-            'Too many wrong codes. Please wait 15 minutes or call us.',
-            'Çok fazla hatalı kod girildi. Lütfen 15 dakika bekleyin veya '
-                'bizi arayın.'),
         LookupResult.failed => context.t(
             'Could not check your booking. Please try again.',
             'Rezervasyonunuz kontrol edilemedi. Lütfen tekrar deneyin.'),

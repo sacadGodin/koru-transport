@@ -4,7 +4,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
-import 'data/bookings.dart';
 import 'data/staff_auth.dart';
 import 'firebase_options.dart';
 import 'lang.dart';
@@ -32,7 +31,6 @@ Future<void> main() async {
   if (const bool.fromEnvironment('USE_EMULATORS')) {
     await FirebaseAuth.instance.useAuthEmulator('localhost', 9099);
     FirebaseFirestore.instance.useFirestoreEmulator('localhost', 8080);
-    cloudFunctions.useFunctionsEmulator('localhost', 5001);
   }
   // Keep a staff member or driver signed in after a page refresh.
   await staffAuth.load();

@@ -1,0 +1,17 @@
+{
+  "name": "koru-firebase-tests",
+  "description": "Tests for the Koru Hospital Transport database rules and app flow, run against the local Firebase emulators.",
+  "private": true,
+  "scripts": {
+    "test": "node --test --test-concurrency=1 test/",
+    "test:emulators": "firebase emulators:exec --only auth,firestore --project demo-koru \"npm test\"",
+    "test:app": "firebase emulators:exec --only auth,firestore --project project-transportation-5b6d8 \"node scripts/seed-emulators.js && node scripts/run-app-flow.js\"",
+    "emulators": "firebase emulators:exec --ui --only auth,firestore --project project-transportation-5b6d8 \"node scripts/seed-emulators.js && echo Emulators ready, press Ctrl+C to stop && sleep 86400\""
+  },
+  "dependencies": {
+    "firebase-admin": "^14.5.0"
+  },
+  "devDependencies": {
+    "firebase": "^13.1.0"
+  }
+}

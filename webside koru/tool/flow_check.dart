@@ -20,6 +20,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:koru_website/data/bookings.dart';
 import 'package:koru_website/data/drivers.dart';
 import 'package:koru_website/data/shuttles.dart';
@@ -119,11 +120,11 @@ Future<void> runFlow() async {
       bookingStore, () => bookingStore.bookings.any((b) => b.ref == ref));
   expect(booking().patient, 'Ayşe Yılmaz');
 
-  bookingStore.advance(booking());
+  check(await bookingStore.advance(booking()), 'booking saved');
   await waitForTracking(token, (i) => i.stage == Stage.confirmed);
 
   booking().time = const TimeOfDay(hour: 10, minute: 0);
-  bookingStore.advance(booking());
+  check(await bookingStore.advance(booking()), 'booking saved');
   await waitForTracking(token, (i) => i.stage == Stage.reserved);
 
   booking()
@@ -131,7 +132,7 @@ Future<void> runFlow() async {
     ..driver = driver.name
     ..driverUid = driver.uid
     ..trip = TripStatus.assigned;
-  bookingStore.advance(booking());
+  check(await bookingStore.advance(booking()), 'booking saved');
   info = await waitForTracking(token, (i) => i.stage == Stage.arranged);
   expect(info.trip, TripStatus.assigned);
   expect(info.driver, 'Mehmet');
@@ -156,7 +157,8 @@ Future<void> runFlow() async {
   // 7. Driver drives the trip; the patient sees each step live.
   await bookingStore.nextTripStep(booking());
   await waitFor(bookingStore, () => booking().trip == TripStatus.enRoute);
-  await bookingStore.shareLocation(booking(), const LatLng(39.93, 32.86));
+  check(await bookingStore.shareLocation(booking(), const LatLng(39.93, 32.86)),
+      'location saved');
   info = await waitForTracking(
       token, (i) => i.trip == TripStatus.enRoute && i.driverLocation != null);
   expect(info.driverLocation, const LatLng(39.93, 32.86));
@@ -171,6 +173,15 @@ Future<void> runFlow() async {
     info = await waitForTracking(token, (i) => i.trip == step);
   }
   expect(info.driverLocation, null);
+
+  // What the server really has (not only what this browser wrote).
+  const server = GetOptions(source: Source.server);
+  final saved =
+      await FirebaseFirestore.instance.doc('bookings/$ref').get(server);
+  expect(saved.get('trip'), 'completed', reason: 'booking on the server');
+  final live =
+      await FirebaseFirestore.instance.doc('tracking/$token').get(server);
+  expect(live.get('trip'), 'completed', reason: 'tracking on the server');
 
   await staffAuth.signOut();
   await tracking.forget();
@@ -213,15 +224,28 @@ Future<void> runFlow() async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // The app's own code (e.g. adding a driver) only uses the emulators when
+  // built with this flag; without it, it would write to the real project.
+  if (!const bool.fromEnvironment('USE_EMULATORS')) {
+    print('FLOW FAILED: build with --dart-define=USE_EMULATORS=true');
+    _showResult('FLOW FAILED: build with --dart-define=USE_EMULATORS=true');
+    return;
+  }
   try {
     await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform);
     await FirebaseAuth.instance.useAuthEmulator('localhost', 9099);
     FirebaseFirestore.instance.useFirestoreEmulator('localhost', 8080);
-    cloudFunctions.useFunctionsEmulator('localhost', 5001);
     await runFlow().timeout(const Duration(minutes: 2));
     print('FLOW OK');
+    _showResult('FLOW OK');
   } catch (e, stack) {
     print('FLOW FAILED: $e\n$stack');
+    _showResult('FLOW FAILED: $e');
   }
 }
+
+// Also puts the result in the page title, for browsers whose console cannot
+// be read from a script (e.g. Safari).
+void _showResult(String text) => SystemChrome.setApplicationSwitcherDescription(
+    ApplicationSwitcherDescription(label: text, primaryColor: 0xFF000000));
