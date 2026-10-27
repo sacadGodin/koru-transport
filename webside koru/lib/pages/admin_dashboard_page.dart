@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../data/bookings.dart';
 import '../data/drivers.dart';
 import '../data/feedback.dart';
+import '../data/messages.dart';
+import '../data/shuttles.dart';
 import '../data/staff_auth.dart';
 import '../lang.dart';
 import '../theme.dart';
@@ -17,9 +19,13 @@ import 'admin_overview.dart';
 // Each booking moves: New request -> Confirmed -> Reserved -> Arranged.
 // After that, the driver moves the trip forward from the driver dashboard
 // and the admin sees each step live.
-// The "Drivers" section adds driver accounts and switches them on or off.
+// The "Drivers" section adds, edits and deletes driver accounts and
+// switches them on or off.
+// The "Messages" section lists what visitors sent with the contact form.
 // The "Feedback" section lists patient comments; staff choose which ones
 // appear on the homepage.
+// The "Free buses" section sets the destination, departure times and
+// frequency of the free bus routes shown on the homepage.
 class AdminDashboardPage extends StatefulWidget {
   const AdminDashboardPage({super.key});
 
@@ -28,7 +34,7 @@ class AdminDashboardPage extends StatefulWidget {
 }
 
 // The sections of the dashboard (chosen in the side menu).
-enum _View { overview, bookings, drivers, feedback }
+enum _View { overview, bookings, drivers, messages, feedback, shuttles }
 
 class _AdminDashboardPageState extends State<AdminDashboardPage> {
   // The section that is open.
@@ -80,13 +86,21 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
     // Rebuild the content whenever a booking, driver or comment changes.
     final content = ListenableBuilder(
-      listenable: Listenable.merge([bookingStore, driverStore, feedbackStore]),
+      listenable: Listenable.merge([
+        bookingStore,
+        driverStore,
+        messageStore,
+        feedbackStore,
+        shuttleStore
+      ]),
       builder: (context, _) => SingleChildScrollView(
         padding: EdgeInsets.all(Responsive.isMobile(context) ? 16 : 32),
         child: switch (_view) {
           _View.overview => AdminOverview(onOpenStage: _openStage),
           _View.feedback => const _FeedbackList(),
           _View.drivers => const _DriverList(),
+          _View.messages => const _MessageList(),
+          _View.shuttles => const _ShuttleList(),
           _View.bookings => Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -121,7 +135,9 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                 _View.overview => context.t('Overview', 'Genel bakış'),
                 _View.bookings => context.t('Bookings', 'Rezervasyonlar'),
                 _View.drivers => context.t('Drivers', 'Sürücüler'),
+                _View.messages => context.t('Messages', 'Mesajlar'),
                 _View.feedback => context.t('Feedback', 'Görüşler'),
+                _View.shuttles => context.t('Free buses', 'Ücretsiz servisler'),
               }),
             ),
       drawer: wide
@@ -130,6 +146,8 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       // Wide screens: dark blue menu always visible on the left.
       body: wide
           ? Row(
+              // Full height, so short sections start at the top.
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 SizedBox(width: 250, child: menu),
                 Expanded(child: content),
@@ -386,53 +404,77 @@ class _SideMenu extends StatelessWidget {
           onTap: onTap,
         );
 
-    return Container(
+    // Material (not a plain colored box), so the highlight of the open
+    // section and the tap ripples show on the dark blue.
+    return Material(
       color: AppColors.blueDark,
-      padding: const EdgeInsets.all(16),
-      child: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(8, 8, 8, 32),
-              child: Logo(light: true),
-            ),
-            link(Icons.insights_outlined, context.t('Overview', 'Genel bakış'),
-                () => _open(context, _View.overview),
-                selected: view == _View.overview),
-            link(
-                Icons.dashboard_outlined,
-                context.t('Bookings', 'Rezervasyonlar'),
-                () => _open(context, _View.bookings),
-                selected: view == _View.bookings),
-            link(
-                Icons.badge_outlined,
-                context.t('Drivers', 'Sürücüler'),
-                () => _open(context, _View.drivers),
-                selected: view == _View.drivers),
-            link(Icons.rate_review_outlined, context.t('Feedback', 'Görüşler'),
-                () => _open(context, _View.feedback),
-                selected: view == _View.feedback),
-            link(
-                Icons.public,
-                context.t('View website', 'Siteyi görüntüle'),
-                () => Navigator.pushNamedAndRemoveUntil(
-                    context, '/', (_) => false)),
-            const Spacer(),
-            // Choose the language (opens a list of all languages).
-            link(Icons.translate, context.lang.nativeName,
-                () => showLanguageDialog(context)),
-            // Change the site's main color.
-            link(Icons.palette_outlined, context.t('Site color', 'Site rengi'),
-                () => showColorPicker(context)),
-            // Sign out and go back to the login page.
-            link(Icons.logout, context.t('Sign out', 'Çıkış yap'), () async {
-              await staffAuth.signOut();
-              if (!context.mounted) return;
-              Navigator.pushNamedAndRemoveUntil(
-                  context, '/admin/login', (_) => false);
-            }),
-          ],
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(8, 8, 8, 32),
+                child: Logo(light: true),
+              ),
+              link(
+                  Icons.insights_outlined,
+                  context.t('Overview', 'Genel bakış'),
+                  () => _open(context, _View.overview),
+                  selected: view == _View.overview),
+              link(
+                  Icons.dashboard_outlined,
+                  context.t('Bookings', 'Rezervasyonlar'),
+                  () => _open(context, _View.bookings),
+                  selected: view == _View.bookings),
+              link(Icons.badge_outlined, context.t('Drivers', 'Sürücüler'),
+                  () => _open(context, _View.drivers),
+                  selected: view == _View.drivers),
+              // Shows how many messages are still unanswered.
+              ListenableBuilder(
+                listenable: messageStore,
+                builder: (context, _) => link(
+                    Icons.mail_outline,
+                    messageStore.open == 0
+                        ? context.t('Messages', 'Mesajlar')
+                        : '${context.t('Messages', 'Mesajlar')} (${messageStore.open})',
+                    () => _open(context, _View.messages),
+                    selected: view == _View.messages),
+              ),
+              link(
+                  Icons.rate_review_outlined,
+                  context.t('Feedback', 'Görüşler'),
+                  () => _open(context, _View.feedback),
+                  selected: view == _View.feedback),
+              link(
+                  Icons.directions_bus_outlined,
+                  context.t('Free buses', 'Ücretsiz servisler'),
+                  () => _open(context, _View.shuttles),
+                  selected: view == _View.shuttles),
+              link(
+                  Icons.public,
+                  context.t('View website', 'Siteyi görüntüle'),
+                  () => Navigator.pushNamedAndRemoveUntil(
+                      context, '/', (_) => false)),
+              const Spacer(),
+              // Choose the language (opens a list of all languages).
+              link(Icons.translate, context.lang.nativeName,
+                  () => showLanguageDialog(context)),
+              // Change the site's main color.
+              link(
+                  Icons.palette_outlined,
+                  context.t('Site color', 'Site rengi'),
+                  () => showColorPicker(context)),
+              // Sign out and go back to the login page.
+              link(Icons.logout, context.t('Sign out', 'Çıkış yap'), () async {
+                await staffAuth.signOut();
+                if (!context.mounted) return;
+                Navigator.pushNamedAndRemoveUntil(
+                    context, '/admin/login', (_) => false);
+              }),
+            ],
+          ),
         ),
       ),
     );
@@ -728,8 +770,8 @@ class _DispatchDialogState extends State<_DispatchDialog> {
                 Text(
                     context.t('No drivers yet. Add one in the Drivers section.',
                         'Henüz sürücü yok. Sürücüler bölümünden ekleyin.'),
-                    style: TextStyle(
-                        color: Theme.of(context).colorScheme.error)),
+                    style:
+                        TextStyle(color: Theme.of(context).colorScheme.error)),
               ],
               const SizedBox(height: 14),
               FieldLabel(context.t('Vehicle plate', 'Araç plakası'),
@@ -755,7 +797,8 @@ class _DispatchDialogState extends State<_DispatchDialog> {
 }
 
 // Drivers section: one card per driver account, a switch to turn the
-// account on or off, and a button to add a new driver.
+// account on or off, buttons to edit or delete it, and a button to add a
+// new driver.
 class _DriverList extends StatelessWidget {
   const _DriverList();
 
@@ -810,8 +853,11 @@ class _DriverList extends StatelessWidget {
                           style: const TextStyle(
                               fontSize: 17, fontWeight: FontWeight.w800)),
                       Text(
-                          [d.phone, d.email, if (d.vehicle.isNotEmpty) d.vehicle]
-                              .join(' · '),
+                          [
+                            d.phone,
+                            d.email,
+                            if (d.vehicle.isNotEmpty) d.vehicle
+                          ].join(' · '),
                           style: const TextStyle(color: AppColors.muted)),
                     ],
                   ),
@@ -827,18 +873,66 @@ class _DriverList extends StatelessWidget {
                   value: d.active,
                   onChanged: (v) => driverStore.setActive(d, v),
                 ),
+                IconButton(
+                  tooltip: context.t('Edit', 'Düzenle'),
+                  icon: const Icon(Icons.edit_outlined),
+                  onPressed: () => showDialog<void>(
+                      context: context,
+                      builder: (_) => _AddDriverDialog(driver: d)),
+                ),
+                IconButton(
+                  tooltip: context.t('Delete', 'Sil'),
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () => _delete(context, d),
+                ),
               ],
             ),
           ),
       ],
     );
   }
+
+  // Asks first, then removes the driver's account and profile.
+  Future<void> _delete(BuildContext context, Driver d) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(context.t('Delete driver', 'Sürücüyü sil')),
+        content: Text(context.t(
+            '${d.name} will no longer be able to sign in. This cannot be '
+                'undone. Their past trips keep their name.',
+            '${d.name} artık giriş yapamayacak. Bu işlem geri alınamaz. '
+                'Geçmiş yolculuklarda adı kalır.')),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(context.t('Cancel', 'İptal'))),
+          FilledButton(
+              style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.error),
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(context.t('Delete', 'Sil'))),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    final error = await driverStore.delete(d);
+    if (error != null && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(context.t(
+              'Could not delete the driver.', 'Sürücü silinemedi.'))));
+    }
+  }
 }
 
-// Add driver form: name, phone, usual vehicle, email and a first password
-// the coordinator gives to the driver.
+// Add / edit driver form: name, phone, usual vehicle, email and a password
+// the coordinator gives to the driver. When editing, the password may be
+// left empty to keep the old one.
 class _AddDriverDialog extends StatefulWidget {
-  const _AddDriverDialog();
+  const _AddDriverDialog({this.driver});
+
+  // The driver being edited, or null to add a new one.
+  final Driver? driver;
 
   @override
   State<_AddDriverDialog> createState() => _AddDriverDialogState();
@@ -846,13 +940,15 @@ class _AddDriverDialog extends StatefulWidget {
 
 class _AddDriverDialogState extends State<_AddDriverDialog> {
   final _formKey = GlobalKey<FormState>();
-  final _name = TextEditingController();
-  final _phone = TextEditingController();
-  final _vehicle = TextEditingController();
-  final _email = TextEditingController();
+  late final _name = TextEditingController(text: widget.driver?.name);
+  late final _phone = TextEditingController(text: widget.driver?.phone);
+  late final _vehicle = TextEditingController(text: widget.driver?.vehicle);
+  late final _email = TextEditingController(text: widget.driver?.email);
   final _password = TextEditingController();
   bool _busy = false;
   String? _error;
+
+  bool get _editing => widget.driver != null;
 
   @override
   void dispose() {
@@ -872,13 +968,26 @@ class _AddDriverDialogState extends State<_AddDriverDialog> {
       _busy = true;
       _error = null;
     });
-    final error = await driverStore.add(
+    final fields = (
       name: _name.text.trim(),
       phone: _phone.text.trim(),
       vehicle: _vehicle.text.trim(),
       email: _email.text.trim(),
       password: _password.text,
     );
+    final error = _editing
+        ? await driverStore.edit(widget.driver!,
+            name: fields.name,
+            phone: fields.phone,
+            vehicle: fields.vehicle,
+            email: fields.email,
+            password: fields.password)
+        : await driverStore.add(
+            name: fields.name,
+            phone: fields.phone,
+            vehicle: fields.vehicle,
+            email: fields.email,
+            password: fields.password);
     if (!mounted) return;
     if (error == null) {
       Navigator.pop(context);
@@ -891,8 +1000,8 @@ class _AddDriverDialogState extends State<_AddDriverDialog> {
             'Bu e-posta ile zaten bir hesap var.'),
         'invalid-argument' => context.t('Please check the email and password.',
             'Lütfen e-posta ve şifreyi kontrol edin.'),
-        _ => context.t('Could not add the driver. Please try again.',
-            'Sürücü eklenemedi. Lütfen tekrar deneyin.'),
+        _ => context.t('Could not save the driver. Please try again.',
+            'Sürücü kaydedilemedi. Lütfen tekrar deneyin.'),
       };
     });
   }
@@ -900,7 +1009,9 @@ class _AddDriverDialogState extends State<_AddDriverDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(context.t('Add driver', 'Sürücü ekle')),
+      title: Text(_editing
+          ? context.t('Edit driver', 'Sürücüyü düzenle')
+          : context.t('Add driver', 'Sürücü ekle')),
       content: SizedBox(
         width: 380,
         child: Form(
@@ -928,18 +1039,24 @@ class _AddDriverDialogState extends State<_AddDriverDialog> {
                         decoration:
                             const InputDecoration(hintText: '[34 ABC 123]'))),
                 const SizedBox(height: 14),
-                FieldLabel(context.t('Email (to sign in)', 'E-posta (giriş için)'),
+                FieldLabel(
+                    context.t('Email (to sign in)', 'E-posta (giriş için)'),
                     child: TextFormField(
                         controller: _email,
                         validator: _required,
                         keyboardType: TextInputType.emailAddress)),
                 const SizedBox(height: 14),
-                FieldLabel(context.t('First password', 'İlk şifre'),
+                FieldLabel(
+                    _editing
+                        ? context.t('New password (leave empty to keep)',
+                            'Yeni şifre (aynı kalsın diye boş bırakın)')
+                        : context.t('First password', 'İlk şifre'),
                     child: TextFormField(
                         controller: _password,
-                        validator: (v) => (v == null || v.length < 8)
-                            ? context.t('At least 8 characters',
-                                'En az 8 karakter')
+                        validator: (v) => (v ?? '').length < 8 &&
+                                !(_editing && (v ?? '').isEmpty)
+                            ? context.t(
+                                'At least 8 characters', 'En az 8 karakter')
                             : null)),
                 if (_error != null) ...[
                   const SizedBox(height: 14),
@@ -960,7 +1077,352 @@ class _AddDriverDialogState extends State<_AddDriverDialog> {
             onPressed: _busy ? null : _save,
             child: Text(_busy
                 ? context.t('Saving...', 'Kaydediliyor...')
-                : context.t('Add driver', 'Sürücü ekle'))),
+                : _editing
+                    ? context.t('Save', 'Kaydet')
+                    : context.t('Add driver', 'Sürücü ekle'))),
+      ],
+    );
+  }
+}
+
+// Messages section: one card per contact form message, newest first, with
+// buttons to mark it as answered or delete it. Unanswered ones have a blue
+// border.
+class _MessageList extends StatelessWidget {
+  const _MessageList();
+
+  @override
+  Widget build(BuildContext context) {
+    final items = messageStore.items;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(context.t('Messages', 'Mesajlar'),
+            style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800)),
+        Text(
+            context.t('Sent with the contact form on the website.',
+                'Sitedeki iletişim formuyla gönderilenler.'),
+            style: const TextStyle(color: AppColors.muted)),
+        const SizedBox(height: 24),
+        if (items.isEmpty)
+          Text(context.t('No messages yet.', 'Henüz mesaj yok.'),
+              style: const TextStyle(color: AppColors.muted)),
+        for (final m in items)
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border.all(
+                  color: m.handled ? AppColors.border : AppColors.blue,
+                  width: m.handled ? 1 : 2),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(m.name,
+                        style: const TextStyle(
+                            fontSize: 17, fontWeight: FontWeight.w800)),
+                    Text(m.topic.label(context),
+                        style: const TextStyle(fontWeight: FontWeight.w700)),
+                    Text(
+                        [
+                          '${formatDate(m.date)} '
+                              '${formatTime(TimeOfDay.fromDateTime(m.date))}',
+                          if (m.reference.isNotEmpty) m.reference,
+                        ].join(' · '),
+                        style: const TextStyle(color: AppColors.muted)),
+                    if (m.handled)
+                      Text(context.t('Answered', 'Yanıtlandı'),
+                          style: const TextStyle(
+                              color: AppColors.success,
+                              fontWeight: FontWeight.w700)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                // Phone or email to answer to.
+                SelectableText(m.reply,
+                    style: TextStyle(
+                        color: AppColors.blue, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 10),
+                Text(m.message, style: const TextStyle(height: 1.5)),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    m.handled
+                        ? OutlinedButton(
+                            onPressed: () => messageStore.setHandled(m, false),
+                            child: Text(context.t(
+                                'Mark as not answered', 'Yanıtlanmadı yap')),
+                          )
+                        : FilledButton(
+                            onPressed: () => messageStore.setHandled(m, true),
+                            child: Text(context.t('Mark as answered',
+                                'Yanıtlandı olarak işaretle')),
+                          ),
+                    TextButton(
+                      onPressed: () => messageStore.remove(m),
+                      child: Text(context.t('Delete', 'Sil')),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+// Free buses section: one card per route (A, B, C) with what visitors see
+// on the homepage and a button to change it.
+class _ShuttleList extends StatelessWidget {
+  const _ShuttleList();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(context.t('Free buses', 'Ücretsiz servisler'),
+            style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800)),
+        Text(
+            context.t(
+                'Shown on the homepage under "Next free buses". A route says '
+                    '"Schedule to be announced" until it has a destination '
+                    'and at least one departure time.',
+                'Ana sayfada "Sıradaki ücretsiz servisler" altında görünür. '
+                    'Bir hat, varış noktası ve en az bir kalkış saati '
+                    'girilene kadar "Sefer saatleri yakında duyurulacak" '
+                    'olarak görünür.'),
+            style: const TextStyle(color: AppColors.muted)),
+        const SizedBox(height: 24),
+        for (final route in shuttleStore.routes)
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border.all(color: AppColors.border),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppColors.blue,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Text(route.branch.id,
+                      style: const TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.w800)),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                          '${context.t(route.branch.en, route.branch.tr)} → '
+                          '${route.destination.isEmpty ? context.t('[No destination]', '[Varış noktası yok]') : route.destination}',
+                          style: const TextStyle(
+                              fontSize: 17, fontWeight: FontWeight.w800)),
+                      Text(
+                          [
+                            route.times.isEmpty
+                                ? context.t(
+                                    'No departure times', 'Kalkış saati yok')
+                                : route.times.join(', '),
+                            if (route.frequency != null)
+                              context.t('Every ${route.frequency} min',
+                                  'Her ${route.frequency} dk'),
+                          ].join(' · '),
+                          style: const TextStyle(color: AppColors.muted)),
+                      Text(
+                          route.announced
+                              ? context.t('Shown on the homepage',
+                                  'Ana sayfada görünüyor')
+                              : context.t(
+                                  'Visitors see "Schedule to be announced"',
+                                  'Ziyaretçiler "Sefer saatleri yakında duyurulacak" görür'),
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: route.announced
+                                  ? AppColors.success
+                                  : AppColors.muted)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: () => showDialog<void>(
+                      context: context, builder: (_) => _ShuttleDialog(route)),
+                  child: Text(context.t('Edit', 'Düzenle')),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+// Edit form for one free bus route: destination, departure times and how
+// often it runs. Leaving destination and times empty hides the schedule.
+class _ShuttleDialog extends StatefulWidget {
+  const _ShuttleDialog(this.route);
+
+  final ShuttleRoute route;
+
+  @override
+  State<_ShuttleDialog> createState() => _ShuttleDialogState();
+}
+
+class _ShuttleDialogState extends State<_ShuttleDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final _destination =
+      TextEditingController(text: widget.route.destination);
+  late final _times =
+      TextEditingController(text: widget.route.times.join(', '));
+  late final _frequency =
+      TextEditingController(text: widget.route.frequency?.toString() ?? '');
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    for (final c in [_destination, _times, _frequency]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_busy || !_formKey.currentState!.validate()) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final frequency = _frequency.text.trim();
+    final saved = await shuttleStore.save(ShuttleRoute(
+      branch: widget.route.branch,
+      destination: _destination.text.trim(),
+      times: parseTimes(_times.text)!,
+      frequency: frequency.isEmpty ? null : int.parse(frequency),
+    ));
+    if (!mounted) return;
+    if (saved) {
+      Navigator.pop(context);
+      return;
+    }
+    setState(() {
+      _busy = false;
+      _error = context.t('Could not save. Please try again.',
+          'Kaydedilemedi. Lütfen tekrar deneyin.');
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final branch = widget.route.branch;
+    return AlertDialog(
+      title: Text('${context.t('Route', 'Hat')} ${branch.id} · '
+          '${context.t(branch.en, branch.tr)}'),
+      content: SizedBox(
+        width: 380,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                FieldLabel(context.t('Destination', 'Varış noktası'),
+                    child: TextFormField(
+                        controller: _destination,
+                        maxLength: 200,
+                        validator: (v) => (v == null || v.trim().isEmpty) &&
+                                (parseTimes(_times.text)?.isNotEmpty ?? false)
+                            ? context.t('Add a destination for these times',
+                                'Bu saatler için varış noktası girin')
+                            : null)),
+                const SizedBox(height: 14),
+                FieldLabel(
+                    context.t('Departure times (24-hour, comma separated)',
+                        'Kalkış saatleri (24 saat, virgülle ayırın)'),
+                    child: TextFormField(
+                        controller: _times,
+                        maxLines: 3,
+                        minLines: 1,
+                        decoration:
+                            const InputDecoration(hintText: '[08:00, 08:30]'),
+                        validator: (v) {
+                          final times = parseTimes(v ?? '');
+                          if (times == null) {
+                            return context.t('Use times like 08:30, 14:00',
+                                '08:30, 14:00 gibi saatler girin');
+                          }
+                          if (times.length > 100) {
+                            return context.t(
+                                'At most 100 times', 'En fazla 100 saat');
+                          }
+                          return null;
+                        })),
+                const SizedBox(height: 14),
+                FieldLabel(
+                    context.t('Every how many minutes (optional)',
+                        'Kaç dakikada bir (isteğe bağlı)'),
+                    child: TextFormField(
+                        controller: _frequency,
+                        keyboardType: TextInputType.number,
+                        validator: (v) {
+                          final text = v?.trim() ?? '';
+                          if (text.isEmpty) return null;
+                          final n = int.tryParse(text);
+                          return n == null || n < 1 || n > 1440
+                              ? context.t('A number of minutes, 1 to 1440',
+                                  '1 ile 1440 arasında dakika')
+                              : null;
+                        })),
+                const SizedBox(height: 8),
+                Text(
+                    context.t(
+                        'Leave destination and times empty to show '
+                            '"Schedule to be announced".',
+                        '"Sefer saatleri yakında duyurulacak" göstermek için '
+                            'varış noktası ve saatleri boş bırakın.'),
+                    style: const TextStyle(color: AppColors.muted)),
+                if (_error != null) ...[
+                  const SizedBox(height: 14),
+                  Text(_error!,
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.error)),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(context.t('Cancel', 'İptal'))),
+        FilledButton(
+            onPressed: _busy ? null : _save,
+            child: Text(_busy
+                ? context.t('Saving...', 'Kaydediliyor...')
+                : context.t('Save', 'Kaydet'))),
       ],
     );
   }

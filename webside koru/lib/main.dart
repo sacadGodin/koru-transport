@@ -21,8 +21,12 @@ import 'theme.dart';
 // App entry point: Flutter starts here.
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Connect to Firebase (bookings and feedback are saved in Firestore).
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // Connect to Firebase (bookings and feedback are saved in Firestore) and,
+  // at the same time, read the main color picked last time in this browser.
+  await Future.wait([
+    Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform),
+    colorController.load(),
+  ]);
   // For testing on this computer: use the local Firebase emulators instead
   // of the real database. Run with --dart-define=USE_EMULATORS=true
   if (const bool.fromEnvironment('USE_EMULATORS')) {
@@ -32,8 +36,6 @@ Future<void> main() async {
   }
   // Keep a staff member or driver signed in after a page refresh.
   await staffAuth.load();
-  // Use the main color picked last time in this browser.
-  await colorController.load();
   runApp(const KoruApp());
 }
 

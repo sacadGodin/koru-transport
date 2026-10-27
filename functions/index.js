@@ -5,6 +5,8 @@
 //   lookupBooking   Patient types reference + code. Returns a tracking link
 //                   (a long random token). Locks after too many wrong codes.
 //   createDriver    Staff add a driver account (email + password).
+//   updateDriver    Staff edit a driver's details, email or password.
+//   deleteDriver    Staff remove a driver's account and profile.
 //   syncTracking    Copies the safe parts of a booking (no name, phone or
 //                   address) to tracking/{token}, which the patient's
 //                   browser listens to for live updates.
@@ -30,6 +32,12 @@ const db = getFirestore();
 
 // Same place as the Firestore database, so triggers work and calls are fast.
 setGlobalOptions({ region: 'asia-northeast1', maxInstances: 10 });
+
+// Patients wait on these two, so one copy is always kept running. Without
+// it the first call after a quiet period starts a new server ("cold start")
+// and takes several seconds. Costs a few dollars a month per function; set
+// to 0 to save that money and accept the slow first call.
+const PATIENT_FACING = { minInstances: 1 };
 
 const TYPES = ['ambulance', 'wheelchair', 'standard', 'airport'];
 const NEEDS = ['wheelchair', 'stretcher', 'oxygen', 'companion'];
@@ -136,7 +144,7 @@ function bookingFields(data) {
   };
 }
 
-exports.createBooking = onCall(async (request) => {
+exports.createBooking = onCall(PATIENT_FACING, async (request) => {
   const fields = bookingFields(request.data ?? {});
   const code = newCode();
   const token = newToken();
@@ -170,7 +178,7 @@ exports.createBooking = onCall(async (request) => {
 // lookupBooking
 // ---------------------------------------------------------------------------
 
-exports.lookupBooking = onCall(async (request) => {
+exports.lookupBooking = onCall(PATIENT_FACING, async (request) => {
   const ref = String(request.data?.ref ?? '').trim().toUpperCase();
   const code = normalizeCode(request.data?.code);
   // Same answer for "no such booking" and "wrong code", so the lookup does
@@ -217,43 +225,101 @@ exports.lookupBooking = onCall(async (request) => {
 });
 
 // ---------------------------------------------------------------------------
-// createDriver
+// createDriver, updateDriver, deleteDriver
 // ---------------------------------------------------------------------------
+
+// Checks the driver form. Returns the profile fields (without active /
+// createdAt) and the password, which may be null when it is optional.
+function driverFields(data, { passwordRequired }) {
+  const email = text(data.email, 'email', 200);
+  let password = null;
+  if (passwordRequired || data.password) {
+    password = text(data.password, 'password', 200);
+    if (password.length < 8) {
+      throw new HttpsError('invalid-argument',
+          'Password must be at least 8 characters.');
+    }
+  }
+  return {
+    profile: {
+      name: text(data.name, 'name', 200),
+      phone: text(data.phone, 'phone', 50),
+      vehicle: text(data.vehicle ?? '', 'vehicle', 50, { required: false }),
+      email,
+    },
+    password,
+  };
+}
+
+// Turns Authentication errors about the email into clear messages.
+function authError(e) {
+  if (e.code === 'auth/email-already-exists') {
+    return new HttpsError('already-exists', 'This email is already used.');
+  }
+  if (e.code === 'auth/invalid-email') {
+    return new HttpsError('invalid-argument', 'Invalid email.');
+  }
+  return e;
+}
+
+// Returns the drivers/{uid} document of an existing driver.
+async function driverDoc(data) {
+  const ref = db.doc(`drivers/${text(data.uid, 'uid', 128)}`);
+  if (!(await ref.get()).exists) {
+    throw new HttpsError('not-found', 'No such driver.');
+  }
+  return ref;
+}
 
 exports.createDriver = onCall(async (request) => {
   await requireStaff(request.auth);
-  const data = request.data ?? {};
-  const email = text(data.email, 'email', 200);
-  const password = text(data.password, 'password', 200);
-  if (password.length < 8) {
-    throw new HttpsError('invalid-argument',
-        'Password must be at least 8 characters.');
-  }
-  const profile = {
-    name: text(data.name, 'name', 200),
-    phone: text(data.phone, 'phone', 50),
-    vehicle: text(data.vehicle ?? '', 'vehicle', 50, { required: false }),
-    email,
-    active: true,
-    createdAt: FieldValue.serverTimestamp(),
-  };
+  const { profile, password } =
+    driverFields(request.data ?? {}, { passwordRequired: true });
 
   let user;
   try {
     user = await getAuth().createUser({
-      email, password, displayName: profile.name,
+      email: profile.email, password, displayName: profile.name,
     });
   } catch (e) {
-    if (e.code === 'auth/email-already-exists') {
-      throw new HttpsError('already-exists', 'This email is already used.');
-    }
-    if (e.code === 'auth/invalid-email') {
-      throw new HttpsError('invalid-argument', 'Invalid email.');
-    }
-    throw e;
+    throw authError(e);
   }
-  await db.doc(`drivers/${user.uid}`).set(profile);
+  await db.doc(`drivers/${user.uid}`).set({
+    ...profile, active: true, createdAt: FieldValue.serverTimestamp(),
+  });
   return { uid: user.uid };
+});
+
+// The password is only changed when a new one is given.
+exports.updateDriver = onCall(async (request) => {
+  await requireStaff(request.auth);
+  const data = request.data ?? {};
+  const ref = await driverDoc(data);
+  const { profile, password } = driverFields(data, { passwordRequired: false });
+
+  try {
+    await getAuth().updateUser(ref.id, {
+      email: profile.email,
+      displayName: profile.name,
+      ...(password && { password }),
+    });
+  } catch (e) {
+    throw authError(e);
+  }
+  await ref.update(profile);
+  return { uid: ref.id };
+});
+
+// Bookings the driver had keep their name for the record, but the deleted
+// account can no longer sign in or read them.
+exports.deleteDriver = onCall(async (request) => {
+  await requireStaff(request.auth);
+  const ref = await driverDoc(request.data ?? {});
+  await getAuth().deleteUser(ref.id).catch((e) => {
+    if (e.code !== 'auth/user-not-found') throw e;
+  });
+  await ref.delete();
+  return { uid: ref.id };
 });
 
 // ---------------------------------------------------------------------------

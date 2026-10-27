@@ -18,14 +18,18 @@ class ContactInfo {
 }
 
 // Hospital branches (used in dropdowns, the branch finder and contact page).
-const branches = ['[BRANCH 1]', '[BRANCH 2]', '[BRANCH 3]'];
+const branches = [
+  'Koru Hospital Çukurambar',
+  'Koru Hospital Sincan',
+  'Koru Hospital Kavaklıdere',
+];
 
 // Where each branch is on the map (latitude, longitude).
 // TODO: replace these placeholder points with each branch's real location.
 const branchLocations = {
-  '[BRANCH 1]': LatLng(39.9208, 32.8541),
-  '[BRANCH 2]': LatLng(39.8890, 32.6640),
-  '[BRANCH 3]': LatLng(39.9700, 32.5800),
+  'Koru Hospital Çukurambar': LatLng(39.9208, 32.8541),
+  'Koru Hospital Sincan': LatLng(39.8890, 32.6640),
+  'Koru Hospital Kavaklıdere': LatLng(39.9700, 32.5800),
 };
 
 // Map point of a branch (Ankara city centre if the branch has no point yet).
@@ -102,19 +106,18 @@ extension TripStatusText on TripStatus {
   String label(BuildContext context) => switch (this) {
         TripStatus.assigned => context.t('Driver assigned', 'Sürücü atandı'),
         TripStatus.enRoute => context.t('Driver on the way', 'Sürücü yolda'),
-        TripStatus.arrived =>
-          context.t('Driver has arrived', 'Sürücü geldi'),
+        TripStatus.arrived => context.t('Driver has arrived', 'Sürücü geldi'),
         TripStatus.onBoard =>
           context.t('On the way to the hospital', 'Hastaneye gidiliyor'),
-        TripStatus.completed => context.t('Trip completed', 'Yolculuk tamamlandı'),
+        TripStatus.completed =>
+          context.t('Trip completed', 'Yolculuk tamamlandı'),
       };
 
   // Button the driver presses to reach the next step.
   String action(BuildContext context) => switch (this) {
         TripStatus.assigned => context.t('Start trip', 'Yola çık'),
         TripStatus.enRoute => context.t('I have arrived', 'Vardım'),
-        TripStatus.arrived =>
-          context.t('Patient on board', 'Hasta araçta'),
+        TripStatus.arrived => context.t('Patient on board', 'Hasta araçta'),
         TripStatus.onBoard => context.t('Complete trip', 'Yolculuğu bitir'),
         TripStatus.completed => '',
       };

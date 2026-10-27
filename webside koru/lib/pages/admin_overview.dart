@@ -545,9 +545,10 @@ class _Upcoming extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tomorrow = today.add(const Duration(days: 1));
+    // Finished trips are no longer upcoming.
     final rides = bookingStore.bookings.where((b) {
       final d = DateTime(b.date.year, b.date.month, b.date.day);
-      return d == today || d == tomorrow;
+      return (d == today || d == tomorrow) && b.trip != TripStatus.completed;
     }).toList()
       ..sort((a, b) {
         final byDay = a.date.compareTo(b.date);
@@ -573,21 +574,26 @@ class _Upcoming extends StatelessWidget {
                   context.t('No rides planned.', 'Planlanmış yolculuk yok.'),
                   style: const TextStyle(color: AppColors.muted)),
             ),
+          // Each row on its own see-through Material, so the tap ripple
+          // shows above the white card.
           for (final b in rides)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              onTap: () => onOpenStage(b.stage),
-              leading: CircleAvatar(
-                backgroundColor: AppColors.blueSoft,
-                child: Icon(b.type.icon, color: AppColors.blue, size: 20),
+            Material(
+              type: MaterialType.transparency,
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                onTap: () => onOpenStage(b.stage),
+                leading: CircleAvatar(
+                  backgroundColor: AppColors.blueSoft,
+                  child: Icon(b.type.icon, color: AppColors.blue, size: 20),
+                ),
+                title: Text('${formatTime(b.time)}  ·  ${b.patient}',
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text(
+                    '${DateTime(b.date.year, b.date.month, b.date.day) == today ? context.t('Today', 'Bugün') : context.t('Tomorrow', 'Yarın')}'
+                    '  ·  ${b.ref}  ·  ${b.from} → ${b.branch}',
+                    overflow: TextOverflow.ellipsis),
+                trailing: _StageBadge(b.stage),
               ),
-              title: Text('${formatTime(b.time)}  ·  ${b.patient}',
-                  style: const TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: Text(
-                  '${DateTime(b.date.year, b.date.month, b.date.day) == today ? context.t('Today', 'Bugün') : context.t('Tomorrow', 'Yarın')}'
-                  '  ·  ${b.ref}  ·  ${b.from} → ${b.branch}',
-                  overflow: TextOverflow.ellipsis),
-              trailing: _StageBadge(b.stage),
             ),
         ],
       ),

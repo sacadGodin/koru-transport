@@ -69,21 +69,48 @@ class DriverStore extends ChangeNotifier {
     required String vehicle,
     required String email,
     required String password,
-  }) async {
-    try {
-      await cloudFunctions.httpsCallable('createDriver').call({
+  }) =>
+      _call('createDriver', {
         'name': name,
         'phone': phone,
         'vehicle': vehicle,
         'email': email,
         'password': password,
       });
+
+  // Saves new details for a driver (updateDriver function). An empty
+  // password keeps the old one. Returns null or the error code, like add.
+  Future<String?> edit(
+    Driver driver, {
+    required String name,
+    required String phone,
+    required String vehicle,
+    required String email,
+    required String password,
+  }) =>
+      _call('updateDriver', {
+        'uid': driver.uid,
+        'name': name,
+        'phone': phone,
+        'vehicle': vehicle,
+        'email': email,
+        if (password.isNotEmpty) 'password': password,
+      });
+
+  // Removes the driver's sign-in account and profile (deleteDriver
+  // function). Returns null or the error code.
+  Future<String?> delete(Driver driver) =>
+      _call('deleteDriver', {'uid': driver.uid});
+
+  Future<String?> _call(String name, Map<String, Object> data) async {
+    try {
+      await cloudFunctions.httpsCallable(name).call(data);
       return null;
     } on FirebaseFunctionsException catch (e) {
-      debugPrint('Adding driver failed: ${e.code} ${e.message}');
+      debugPrint('$name failed: ${e.code} ${e.message}');
       return e.code;
     } catch (e) {
-      debugPrint('Adding driver failed: $e');
+      debugPrint('$name failed: $e');
       return 'unknown';
     }
   }

@@ -461,10 +461,33 @@ const translations = <String, Map<Lang, String>>{
     Lang.ru:
         "Бесплатно для всех посетителей больницы Koru. Ищите синий знак автобуса у главного входа."
   },
-  "Every [XX] min": {
-    Lang.fr: "Toutes les [XX] min",
-    Lang.ar: "كل [XX] دقيقة",
-    Lang.ru: "Каждые [XX] мин"
+  "Every {} min": {
+    Lang.fr: "Toutes les {} min",
+    Lang.ar: "كل {} دقيقة",
+    Lang.ru: "Каждые {} мин"
+  },
+  "FREE": {Lang.fr: "GRATUIT", Lang.ar: "مجاني", Lang.ru: "БЕСПЛАТНО"},
+  "Free": {Lang.fr: "Gratuit", Lang.ar: "مجاني", Lang.ru: "Бесплатно"},
+  "Schedule to be announced": {
+    Lang.fr: "Horaires à venir",
+    Lang.ar: "سيتم الإعلان عن المواعيد",
+    Lang.ru: "Расписание будет объявлено"
+  },
+  "Tomorrow": {Lang.fr: "Demain", Lang.ar: "غدًا", Lang.ru: "Завтра"},
+  "Koru Hospital Çukurambar": {
+    Lang.fr: "Hôpital Koru Çukurambar",
+    Lang.ar: "مستشفى كورو جوكورامبار",
+    Lang.ru: "Больница Koru Чукурамбар"
+  },
+  "Koru Hospital Sincan": {
+    Lang.fr: "Hôpital Koru Sincan",
+    Lang.ar: "مستشفى كورو سينجان",
+    Lang.ru: "Больница Koru Синджан"
+  },
+  "Koru Hospital Kavaklıdere": {
+    Lang.fr: "Hôpital Koru Kavaklıdere",
+    Lang.ar: "مستشفى كورو كافاكليدره",
+    Lang.ru: "Больница Koru Каваклыдере"
   },
   "Next": {Lang.fr: "Suivant", Lang.ar: "التالي", Lang.ru: "Далее"},
   "Leave feedback": {

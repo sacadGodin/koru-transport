@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../data/bookings.dart';
 import '../data/feedback.dart';
+import '../data/shuttles.dart';
 import '../lang.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -555,23 +558,53 @@ class _ServiceCard extends StatelessWidget {
   }
 }
 
-// "Next shuttles": one row per route with how often it runs and the next
-// departure time.
-class _Shuttles extends StatelessWidget {
+// "Next free buses": one row per route (set by staff in the admin
+// dashboard) with how often it runs and the next departure time. Routes
+// staff have not filled in yet say "Schedule to be announced".
+class _Shuttles extends StatefulWidget {
   const _Shuttles({super.key});
 
-  // (route letter, route). Replace the placeholders with real routes.
-  static const _routes = [
-    ('A', '[BRANCH 1] → [METRO STATION]'),
-    ('B', '[BRANCH 1] → [BRANCH 2]'),
-    ('C', '[BRANCH 2] → [BUS TERMINAL]'),
-  ];
+  @override
+  State<_Shuttles> createState() => _ShuttlesState();
+}
+
+class _ShuttlesState extends State<_Shuttles> {
+  // Rebuilds every 30 seconds so the next departure moves on by itself.
+  late final Timer _clock;
+
+  @override
+  void initState() {
+    super.initState();
+    _clock =
+        Timer.periodic(const Duration(seconds: 30), (_) => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _clock.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final intro = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // "FREE" badge above the heading.
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: AppColors.blueSoft,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(context.t('FREE', 'ÜCRETSİZ'),
+              style: TextStyle(
+                  color: AppColors.blue,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1)),
+        ),
+        const SizedBox(height: 14),
         SectionHeading(
             context.t('Next free buses', 'Sıradaki ücretsiz servisler'),
             size: 36,
@@ -583,62 +616,13 @@ class _Shuttles extends StatelessWidget {
       ],
     );
 
-    final rows = Column(
-      children: [
-        for (final (letter, route) in _routes)
-          Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-            decoration: BoxDecoration(
-              border: Border.all(color: AppColors.border),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              children: [
-                // Blue square with the route letter.
-                Container(
-                  width: 44,
-                  height: 44,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: AppColors.blue,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Text(letter,
-                      style: const TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.w800)),
-                ),
-                const SizedBox(width: 14),
-                // Route and how often it runs.
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(route,
-                          style: const TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w700)),
-                      Text(context.t('Every [XX] min', 'Her [XX] dk'),
-                          style: const TextStyle(
-                              fontSize: 14, color: AppColors.muted)),
-                    ],
-                  ),
-                ),
-                // Next departure time.
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(context.t('Next', 'Sıradaki'),
-                        style: const TextStyle(
-                            fontSize: 12, color: AppColors.muted)),
-                    const Text('[HH:MM]',
-                        style: TextStyle(
-                            fontSize: 20, fontWeight: FontWeight.w800)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-      ],
+    final rows = ListenableBuilder(
+      listenable: shuttleStore,
+      builder: (context, _) => Column(
+        children: [
+          for (final route in shuttleStore.routes) _row(context, route),
+        ],
+      ),
     );
 
     return SectionContainer(
@@ -652,6 +636,80 @@ class _Shuttles extends StatelessWidget {
                 Expanded(flex: 3, child: rows),
               ],
             ),
+    );
+  }
+
+  Widget _row(BuildContext context, ShuttleRoute route) {
+    final branch = context.t(route.branch.en, route.branch.tr);
+    final next =
+        route.announced ? nextDeparture(route.times, ankaraNow()) : null;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      decoration: BoxDecoration(
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        children: [
+          // Blue square with the route letter.
+          Container(
+            width: 44,
+            height: 44,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppColors.blue,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Text(route.branch.id,
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w800)),
+          ),
+          const SizedBox(width: 14),
+          // Route, then "Free · every N min" or "Schedule to be announced".
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                    route.announced ? '$branch → ${route.destination}' : branch,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w700)),
+                Text(
+                    route.announced
+                        ? [
+                            context.t('Free', 'Ücretsiz'),
+                            if (route.frequency != null)
+                              context.t('Every ${route.frequency} min',
+                                  'Her ${route.frequency} dk'),
+                          ].join(' · ')
+                        : context.t('Schedule to be announced',
+                            'Sefer saatleri yakında duyurulacak'),
+                    style:
+                        const TextStyle(fontSize: 14, color: AppColors.muted)),
+              ],
+            ),
+          ),
+          // Next departure time (tomorrow's first bus after the last one).
+          if (next != null) ...[
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                    next.tomorrow
+                        ? context.t('Tomorrow', 'Yarın')
+                        : context.t('Next', 'Sıradaki'),
+                    style:
+                        const TextStyle(fontSize: 12, color: AppColors.muted)),
+                Text(next.time,
+                    style: const TextStyle(
+                        fontSize: 20, fontWeight: FontWeight.w800)),
+              ],
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

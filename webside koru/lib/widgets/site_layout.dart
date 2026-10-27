@@ -21,27 +21,29 @@ class Logo extends StatelessWidget {
       return Image.asset('assets/images/koru_transport_logo.png',
           height: 48, semanticLabel: 'Koru Transport');
     }
-    // Blue backgrounds: white heart icon + "KORU Transport" (the blue logo
-    // text would not show on a blue background).
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Image.asset('assets/images/koru_icon_white.png',
-            height: 34, semanticLabel: 'Koru Hastanesi'),
-        const SizedBox(width: 10),
-        const Text('KORU',
-            style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                color: Colors.white)),
-        const SizedBox(width: 10),
-        const Text('Transport',
-            style: TextStyle(
-                fontSize: 19,
-                fontWeight: FontWeight.w700,
-                color: AppColors.goldLight)),
-      ],
+    // Blue backgrounds: the heart + "KORU" logo painted white, then a gold
+    // "Transport" (the blue logo text would not show on a blue background).
+    // Shrinks to fit narrow spaces such as a phone's top bar.
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: AlignmentDirectional.centerStart,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Image.asset('assets/images/koru_logo.png',
+              height: 30,
+              color: Colors.white,
+              colorBlendMode: BlendMode.srcIn,
+              semanticLabel: 'Koru Transport'),
+          const SizedBox(width: 10),
+          const Text('Transport',
+              style: TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.goldLight)),
+        ],
+      ),
     );
   }
 }

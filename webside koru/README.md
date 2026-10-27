@@ -8,7 +8,7 @@ Flutter Web site with a Firebase backend (Auth, Firestore, Cloud Functions).
 |---|---|---|
 | `/booking` | Patients | Book a ride. Afterwards they see a reference (`KR-1001`) and a secret 8-letter **tracking code**. |
 | `/track` | Patients | Type reference + code to follow the booking live (steps, driver, car on the map). |
-| `/admin` | Coordinators (`staff/{uid}`) | Confirm → reserve → assign a driver. Add and switch off drivers. |
+| `/admin` | Coordinators (`staff/{uid}`) | Confirm → reserve → assign a driver. Add, edit, delete and switch off drivers. |
 | `/driver` | Drivers (`drivers/{uid}`, active) | See only their own trips. Start trip → arrived → patient on board → complete. Location is shared while driving. |
 
 ## How it is kept safe
@@ -54,5 +54,6 @@ cd "../webside koru" && flutter test
    ```
    then publish the new web build (`flutter build web`).
 3. In the admin dashboard, open **Drivers** and add each driver (email + first password).
+4. Open **Free buses** and set each route's destination, departure times and frequency. Until a route has a destination and at least one time, the homepage shows "Schedule to be announced".
 
 Bookings made before this change have no tracking code, so patients cannot track them. They still work in the admin dashboard.

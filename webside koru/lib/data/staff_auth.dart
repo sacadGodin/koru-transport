@@ -33,8 +33,13 @@ class StaffAuth extends ChangeNotifier {
   Future<void> load() async {
     final user = await _auth.authStateChanges().first;
     if (user == null) return;
-    isStaff = await _onStaffList(user);
-    isDriver = !isStaff && await _onDriverList(user);
+    // Both lists are checked at the same time: each check is a trip to the
+    // database, and waiting for one before the next slows the first page.
+    final (onStaff, onDrivers) =
+        await (_onStaffList(user), _onDriverList(user)).wait;
+    isStaff = onStaff;
+    isDriver = !isStaff && onDrivers;
+    if (!isDriver) driverName = '';
     uid = isStaff || isDriver ? user.uid : null;
   }
 

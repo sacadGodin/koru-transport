@@ -31,8 +31,33 @@
 
   <title>koru_website</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- Open connections early to the servers the app needs right after it
+       starts (Flutter engine files, Manrope font, Firebase), so they are
+       ready when the app asks. -->
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin>
+
+  <!-- Loading screen shown while the app downloads. Flutter draws on top of
+       it as soon as the first page is ready. -->
+  <style>
+    html, body { margin: 0; height: 100%; background: #FFFFFF; }
+    #loading {
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #loading div {
+      width: 40px; height: 40px; border-radius: 50%;
+      border: 4px solid #D6DEE8; border-top-color: #003973;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
 </head>
 <body>
+  <div id="loading" aria-label="Loading"><div></div></div>
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader

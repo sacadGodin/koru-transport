@@ -69,9 +69,7 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> {
       }
       return;
     }
-    if (!mounted ||
-        _positions != null ||
-        _location == _LocationState.asking) {
+    if (!mounted || _positions != null || _location == _LocationState.asking) {
       return;
     }
     setState(() => _location = _LocationState.asking);
@@ -125,8 +123,7 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> {
         context: context,
         builder: (context) => AlertDialog(
           title: Text(context.t('Complete trip', 'Yolculuğu bitir')),
-          content: Text(context.t(
-              'Has the patient arrived at ${b.branch}?',
+          content: Text(context.t('Has the patient arrived at ${b.branch}?',
               'Hasta ${b.branch} şubesine ulaştı mı?')),
           actions: [
             TextButton(
@@ -167,6 +164,8 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> {
         backgroundColor: AppColors.blueDark,
         foregroundColor: Colors.white,
         toolbarHeight: 72,
+        // No back arrow: the driver leaves by signing out.
+        automaticallyImplyLeading: false,
         title: const Logo(light: true),
         actions: [
           IconButton(
@@ -255,7 +254,8 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> {
       _LocationState.asking => (
           AppColors.blueSoft,
           Icons.my_location,
-          context.t('Allow location in your browser so the patient can see '
+          context.t(
+              'Allow location in your browser so the patient can see '
                   'you coming.',
               'Hastanın sizi görebilmesi için tarayıcıda konuma izin verin.')
         ),
@@ -325,9 +325,8 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(
-            color: trip == TripStatus.assigned
-                ? AppColors.border
-                : AppColors.blue,
+            color:
+                trip == TripStatus.assigned ? AppColors.border : AppColors.blue,
             width: trip == TripStatus.assigned ? 1 : 2),
         borderRadius: BorderRadius.circular(20),
       ),

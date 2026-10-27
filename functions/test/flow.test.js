@@ -18,7 +18,8 @@ const {
 } = require('firebase/auth');
 const {
   getFirestore, connectFirestoreEmulator, doc, getDoc, setDoc, updateDoc,
-  collection, query, where, getDocs, onSnapshot, serverTimestamp, GeoPoint,
+  collection, query, where, orderBy, getDocs, addDoc, onSnapshot,
+  serverTimestamp, GeoPoint,
 } = require('firebase/firestore');
 const {
   getFunctions, connectFunctionsEmulator, httpsCallable,
@@ -84,7 +85,7 @@ const form = {
   phone: '0555 111 22 33',
   type: 'wheelchair',
   from: 'Atatürk Blv. 1, Ankara',
-  branch: '[BRANCH 1]',
+  branch: 'Koru Hospital Çukurambar',
   date: Date.UTC(2026, 10, 3),
   time: '09:30',
   needs: ['wheelchair', 'companion'],
@@ -247,4 +248,115 @@ test('wrong codes lock the reference', async () => {
   // Locked now: even the right code is refused for a while.
   await callFails(patient.call('lookupBooking', { ref: booked.ref, code: booked.code }),
       'resource-exhausted');
+});
+
+test('contact messages: visitors send, only staff read', async () => {
+  const staffUser = await getAdminAuth(adminSdk).createUser({
+    email: 'desk@koru.test', password: 'staff-pass-456',
+  });
+  await getAdminDb(adminSdk).doc(`staff/${staffUser.uid}`).set({ name: 'Desk' });
+  const visitor = browser('visitor');
+  const staff = browser('desk');
+  const message = {
+    name: 'Ali', reply: '0555 123 45 67', topic: 'booking', reference: 'KR-1001',
+    message: 'Can I change the time?', date: serverTimestamp(), handled: false,
+  };
+
+  const sent = await addDoc(collection(visitor.db, 'messages'), message);
+  await denied(getDoc(sent));
+  await denied(getDocs(collection(visitor.db, 'messages')));
+  await denied(addDoc(collection(visitor.db, 'messages'), { ...message, handled: true }));
+  await denied(addDoc(collection(visitor.db, 'messages'), { ...message, topic: 'spam' }));
+  await denied(addDoc(collection(visitor.db, 'messages'), { ...message, message: '' }));
+  await denied(addDoc(collection(visitor.db, 'messages'), { ...message, extra: 1 }));
+
+  await staff.signIn('desk@koru.test', 'staff-pass-456');
+  const list = await getDocs(query(collection(staff.db, 'messages'), orderBy('date', 'desc')));
+  assert.equal(list.size, 1);
+  assert.equal(list.docs[0].get('message'), 'Can I change the time?');
+  await updateDoc(doc(staff.db, 'messages', sent.id), { handled: true });
+  await denied(updateDoc(doc(staff.db, 'messages', sent.id), { message: 'edited' }));
+});
+
+test('free bus routes: everyone reads, only staff set them', async () => {
+  const staffUser = await getAdminAuth(adminSdk).createUser({
+    email: 'buses@koru.test', password: 'staff-pass-789',
+  });
+  await getAdminDb(adminSdk).doc(`staff/${staffUser.uid}`).set({ name: 'Buses' });
+  const visitor = browser('busVisitor');
+  const staff = browser('busStaff');
+  const route = {
+    destination: 'Test stop', times: ['08:00', '08:30'], frequency: 30,
+    updatedAt: serverTimestamp(),
+  };
+
+  // Nothing set yet: the homepage shows "Schedule to be announced".
+  assert.equal((await getDocs(collection(visitor.db, 'shuttleRoutes'))).size, 0);
+  await denied(setDoc(doc(visitor.db, 'shuttleRoutes', 'A'), route));
+
+  await staff.signIn('buses@koru.test', 'staff-pass-789');
+  await setDoc(doc(staff.db, 'shuttleRoutes', 'A'), route);
+  await setDoc(doc(staff.db, 'shuttleRoutes', 'B'), { ...route, frequency: null });
+  await denied(setDoc(doc(staff.db, 'shuttleRoutes', 'D'), route));
+  await denied(setDoc(doc(staff.db, 'shuttleRoutes', 'A'), { ...route, frequency: 0 }));
+  await denied(setDoc(doc(staff.db, 'shuttleRoutes', 'A'), { ...route, frequency: '30' }));
+  await denied(setDoc(doc(staff.db, 'shuttleRoutes', 'A'), { ...route, times: '08:00' }));
+  await denied(setDoc(doc(staff.db, 'shuttleRoutes', 'A'), { ...route, extra: 1 }));
+  await denied(setDoc(doc(staff.db, 'shuttleRoutes', 'A'),
+      { ...route, destination: 'x'.repeat(201) }));
+
+  const seen = await getDoc(doc(visitor.db, 'shuttleRoutes', 'A'));
+  assert.equal(seen.get('destination'), 'Test stop');
+  assert.deepEqual(seen.get('times'), ['08:00', '08:30']);
+  await denied(updateDoc(doc(visitor.db, 'shuttleRoutes', 'A'), { destination: 'Hacked' }));
+});
+
+test('staff edit and delete drivers', async () => {
+  const staffUser = await getAdminAuth(adminSdk).createUser({
+    email: 'fleet@koru.test', password: 'staff-pass-321',
+  });
+  await getAdminDb(adminSdk).doc(`staff/${staffUser.uid}`).set({ name: 'Fleet' });
+  const staff = browser('fleetStaff');
+  const driver = browser('fleetDriver');
+  await staff.signIn('fleet@koru.test', 'staff-pass-321');
+  const { uid } = await staff.call('createDriver', {
+    email: 'mustafa@koru.test', password: 'driver-pass-3',
+    name: 'Mustafa', phone: '0555 000 00 03',
+  });
+
+  // Edit details, email and password. Only staff may.
+  await callFails(driver.call('updateDriver', {
+    uid, email: 'x@koru.test', name: 'X', phone: '1',
+  }), 'unauthenticated');
+  await callFails(staff.call('updateDriver', {
+    uid, email: 'fleet@koru.test', name: 'Mustafa', phone: '1',
+  }), 'already-exists');
+  await callFails(staff.call('updateDriver', {
+    uid, email: 'm@koru.test', name: 'Mustafa', phone: '1', password: 'short',
+  }), 'invalid-argument');
+  await callFails(staff.call('updateDriver', {
+    uid: 'nobody', email: 'm@koru.test', name: 'M', phone: '1',
+  }), 'not-found');
+  await staff.call('updateDriver', {
+    uid, email: 'mustafa.y@koru.test', name: 'Mustafa Yılmaz',
+    phone: '0555 000 00 04', vehicle: '06 KRU 004', password: 'new-pass-44',
+  });
+  const profile = await getDoc(doc(staff.db, 'drivers', uid));
+  assert.equal(profile.get('name'), 'Mustafa Yılmaz');
+  assert.equal(profile.get('email'), 'mustafa.y@koru.test');
+  assert.equal(profile.get('vehicle'), '06 KRU 004');
+  assert.equal(profile.get('active'), true);
+  await driver.signIn('mustafa.y@koru.test', 'new-pass-44');
+
+  // Leaving the password out keeps it.
+  await staff.call('updateDriver', {
+    uid, email: 'mustafa.y@koru.test', name: 'Mustafa', phone: '1',
+  });
+  await driver.signIn('mustafa.y@koru.test', 'new-pass-44');
+
+  // Delete removes the account and the profile.
+  await callFails(driver.call('deleteDriver', { uid }), 'permission-denied');
+  await staff.call('deleteDriver', { uid });
+  assert.equal((await getDoc(doc(staff.db, 'drivers', uid))).exists(), false);
+  await assert.rejects(driver.signIn('mustafa.y@koru.test', 'new-pass-44'));
 });

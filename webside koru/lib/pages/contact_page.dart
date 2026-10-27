@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../data/bookings.dart';
+import '../data/messages.dart';
 import '../lang.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/site_layout.dart';
-
-// The topics a visitor can pick in the contact form.
-enum ContactTopic { booking, change, shuttle, other }
 
 // Contact page: phone / WhatsApp / email cards, a contact form, and the
 // list of branches with a map.
@@ -152,6 +150,8 @@ class _ContactFormState extends State<_ContactForm> {
   final _reference = TextEditingController();
   final _message = TextEditingController();
   ContactTopic _topic = ContactTopic.booking;
+  // true while the message is being saved.
+  bool _sending = false;
 
   @override
   void dispose() {
@@ -165,30 +165,43 @@ class _ContactFormState extends State<_ContactForm> {
       ? context.t('Required', 'Zorunlu alan')
       : null;
 
-  // Checks the fields, shows a "sent" message and clears the form.
-  void _send() {
-    if (!_formKey.currentState!.validate()) return;
-    // TODO: send the message to a backend or email service.
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+  // Checks the fields and saves the message (staff read it in the admin
+  // dashboard). Clears the form once it is saved.
+  Future<void> _send() async {
+    if (_sending || !_formKey.currentState!.validate()) return;
+    setState(() => _sending = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await messageStore.send(
+        name: _name.text.trim(),
+        reply: _reply.text.trim(),
+        topic: _topic,
+        reference: _reference.text.trim(),
+        message: _message.text.trim(),
+      );
+    } catch (e) {
+      debugPrint('Sending message failed: $e');
+      if (!mounted) return;
+      setState(() => _sending = false);
+      messenger.showSnackBar(SnackBar(
+          content: Text(context.t(
+              'Could not send your message. Please try again or call us.',
+              'Mesajınız gönderilemedi. Lütfen tekrar deneyin veya bizi '
+                  'arayın.'))));
+      return;
+    }
+    if (!mounted) return;
+    messenger.showSnackBar(SnackBar(
         content: Text(context.t('Message sent. We will reply soon.',
             'Mesajınız gönderildi. En kısa sürede yanıt vereceğiz.'))));
     for (final c in [_name, _reply, _reference, _message]) {
       c.clear();
     }
+    setState(() => _sending = false);
   }
 
   @override
   Widget build(BuildContext context) {
-    // Name shown in the topic dropdown.
-    String topicLabel(ContactTopic topic) => switch (topic) {
-          ContactTopic.booking =>
-            context.t('Question about a booking', 'Rezervasyon hakkında soru'),
-          ContactTopic.change =>
-            context.t('Change or cancel a booking', 'Değişiklik veya iptal'),
-          ContactTopic.shuttle => context.t('Free bus', 'Ücretsiz servis'),
-          ContactTopic.other => context.t('Other', 'Diğer'),
-        };
-
     return Container(
       padding: EdgeInsets.all(Responsive.isMobile(context) ? 20 : 32),
       decoration: BoxDecoration(
@@ -218,7 +231,7 @@ class _ContactFormState extends State<_ContactForm> {
                 items: [
                   for (final topic in ContactTopic.values)
                     DropdownMenuItem(
-                        value: topic, child: Text(topicLabel(topic))),
+                        value: topic, child: Text(topic.label(context))),
                 ],
                 onChanged: (v) => setState(() => _topic = v!),
               ),
@@ -237,8 +250,10 @@ class _ContactFormState extends State<_ContactForm> {
                     controller: _message, validator: _required, maxLines: 5)),
             const SizedBox(height: 24),
             FilledButton(
-                onPressed: _send,
-                child: Text(context.t('Send message', 'Mesajı gönder'))),
+                onPressed: _sending ? null : _send,
+                child: Text(_sending
+                    ? context.t('Sending...', 'Gönderiliyor...')
+                    : context.t('Send message', 'Mesajı gönder'))),
           ],
         ),
       ),

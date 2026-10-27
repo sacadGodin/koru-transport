@@ -1,7 +1,8 @@
 rules_version='2'
 
 // Who can do what:
-//   Visitors (not signed in): send feedback, read published feedback, and
+//   Visitors (not signed in): send feedback and contact messages, read
+//   published feedback and the free bus routes, and
 //   read ONE tracking document if they know its secret id (the tracking
 //   link). Bookings are created by the createBooking Cloud Function, never
 //   by the browser directly.
@@ -12,7 +13,8 @@ rules_version='2'
 // Data model (fields the rules rely on):
 //   staff/{uid}            added by hand in the Firebase console
 //   drivers/{uid}          name, phone, vehicle, email, active (bool)
-//                          created by the createDriver Cloud Function
+//                          created, edited and deleted by the
+//                          create/update/deleteDriver Cloud Functions
 //   bookings/{ref}         ref, patient, phone, type, from, branch, date,
 //                          time, needs, notes, pickup, stage, createdAt,
 //                          vehicle, driver, driverUid, trip, driverLocation
@@ -20,7 +22,11 @@ rules_version='2'
 //   tracking/{token}       safe copy of a booking for the patient
 //                          (written by the syncTracking function only)
 //   counters/bookings      next booking number (functions only)
+//   messages/{id}          name, reply, topic, reference, message, date,
+//                          handled (contact form)
 //   feedback/{id}          rating, type, comment, date, name, ref, published
+//   shuttleRoutes/{A|B|C}  destination, times (list of "HH:MM"),
+//                          frequency (minutes or null), updatedAt
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -126,6 +132,32 @@ service cloud.firestore {
             || request.resource.data.tripUpdatedAt == request.time);
     }
 
+    // Contact form messages. Anyone may send one (it starts unanswered);
+    // only staff read, mark as answered or delete them.
+    match /messages/{id} {
+      allow read, delete: if isStaff();
+      allow update: if isStaff()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['handled'])
+        && request.resource.data.handled is bool;
+      allow create: if request.resource.data.keys().hasOnly(
+            ['name', 'reply', 'topic', 'reference', 'message', 'date', 'handled'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 200
+        && request.resource.data.reply is string
+        && request.resource.data.reply.size() > 0
+        && request.resource.data.reply.size() <= 200
+        && request.resource.data.topic in ['booking', 'change', 'shuttle', 'other']
+        && request.resource.data.reference is string
+        && request.resource.data.reference.size() <= 50
+        && request.resource.data.message is string
+        && request.resource.data.message.size() > 0
+        && request.resource.data.message.size() <= 4000
+        && request.resource.data.date == request.time
+        && request.resource.data.handled == false;
+    }
+
     match /feedback/{id} {
       allow read: if resource.data.published == true || isStaff();
       allow update, delete: if isStaff();
@@ -137,6 +169,26 @@ service cloud.firestore {
         && request.resource.data.rating <= 5
         && request.resource.data.comment is string
         && request.resource.data.comment.size() <= 2000;
+    }
+
+    // Free bus routes shown on the homepage. Anyone may read them; staff set
+    // the destination, departure times and frequency of routes A, B and C.
+    match /shuttleRoutes/{id} {
+      allow read: if true;
+      allow create, update: if isStaff()
+        && id in ['A', 'B', 'C']
+        && request.resource.data.keys().hasOnly(
+             ['destination', 'times', 'frequency', 'updatedAt'])
+        && request.resource.data.destination is string
+        && request.resource.data.destination.size() <= 200
+        && request.resource.data.times is list
+        && request.resource.data.times.size() <= 100
+        && (request.resource.data.get('frequency', null) == null
+            || (request.resource.data.frequency is int
+                && request.resource.data.frequency >= 1
+                && request.resource.data.frequency <= 1440))
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
     }
   }
 }

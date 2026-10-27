@@ -118,8 +118,7 @@ class _TrackPageState extends State<TrackPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SectionHeading(context.t('Track my ride', 'Yolculuğumu takip et'),
-                  subtitle: context.t(
-                      'See your booking and your driver live.',
+                  subtitle: context.t('See your booking and your driver live.',
                       'Rezervasyonunuzu ve sürücünüzü canlı görün.')),
               const SizedBox(height: 32),
               if (_loading)
@@ -169,8 +168,7 @@ class _TrackPageState extends State<TrackPage> {
               ),
               const SizedBox(height: 8),
               Text(
-                  context.t(
-                      'You got the code on screen right after booking.',
+                  context.t('You got the code on screen right after booking.',
                       'Kodu rezervasyondan hemen sonra ekranda gördünüz.'),
                   style: const TextStyle(color: AppColors.muted)),
               if (_error != null) ...[
@@ -234,7 +232,8 @@ class _TrackingViewState extends State<_TrackingView> {
         if (info == null) {
           return _message(
               context,
-              context.t('Your booking is being prepared. This page updates '
+              context.t(
+                  'Your booking is being prepared. This page updates '
                       'by itself.',
                   'Rezervasyonunuz hazırlanıyor. Bu sayfa kendiliğinden '
                       'güncellenir.'));
@@ -267,12 +266,13 @@ class _TrackingViewState extends State<_TrackingView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(text, style: const TextStyle(fontSize: 17, color: AppColors.muted)),
+        Text(text,
+            style: const TextStyle(fontSize: 17, color: AppColors.muted)),
         const SizedBox(height: 16),
         OutlinedButton(
           onPressed: onClose,
-          child: Text(context.t('Look up another booking',
-              'Başka bir rezervasyon sorgula')),
+          child: Text(context.t(
+              'Look up another booking', 'Başka bir rezervasyon sorgula')),
         ),
       ],
     );
@@ -329,7 +329,9 @@ class _TrackingViewState extends State<_TrackingView> {
             children: [
               const Icon(Icons.circle, size: 10, color: AppColors.success),
               const SizedBox(width: 8),
-              Text(context.t('Live: updates by itself', 'Canlı: kendiliğinden güncellenir'),
+              Text(
+                  context.t('Live: updates by itself',
+                      'Canlı: kendiliğinden güncellenir'),
                   style: const TextStyle(color: AppColors.muted)),
             ],
           ),
@@ -365,9 +367,12 @@ class _TrackingViewState extends State<_TrackingView> {
                   Expanded(
                     child: Text(steps[i].label,
                         style: TextStyle(
-                            fontWeight:
-                                i == current ? FontWeight.w800 : FontWeight.w600,
-                            color: i > current ? AppColors.muted : AppColors.text)),
+                            fontWeight: i == current
+                                ? FontWeight.w800
+                                : FontWeight.w600,
+                            color: i > current
+                                ? AppColors.muted
+                                : AppColors.text)),
                   ),
                 ],
               ),
@@ -426,8 +431,8 @@ class _TrackingViewState extends State<_TrackingView> {
           const SizedBox(height: 12),
           TextButton(
             onPressed: onClose,
-            child: Text(context.t('Look up another booking',
-                'Başka bir rezervasyon sorgula')),
+            child: Text(context.t(
+                'Look up another booking', 'Başka bir rezervasyon sorgula')),
           ),
         ],
       ),
