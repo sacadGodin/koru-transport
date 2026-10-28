@@ -29,6 +29,8 @@ class _AdminScheduleState extends State<AdminSchedule> {
 
   // The day shown.
   DateTime _day = _today();
+  // One key per hour row, to scroll to it from the board.
+  final _rows = List.generate(24, (_) => GlobalKey());
   late Stream<Map<String, Map<String, dynamic>>> _docs =
       scheduleStore.watchDay(_day);
 
@@ -88,7 +90,20 @@ class _AdminScheduleState extends State<AdminSchedule> {
                 children: [
                   _legend(slots),
                   const SizedBox(height: 16),
-                  for (final s in slots) _SlotRow(slot: s),
+                  // Tapping an hour jumps to who booked it.
+                  HourBoard(
+                    slots: slots,
+                    onTap: (s) {
+                      final row = _rows[s.hour].currentContext;
+                      if (row != null) {
+                        Scrollable.ensureVisible(row,
+                            duration: const Duration(milliseconds: 300));
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 24),
+                  for (final s in slots)
+                    _SlotRow(key: _rows[s.hour], slot: s),
                 ],
               );
             },
@@ -180,10 +195,43 @@ class _AdminScheduleState extends State<AdminSchedule> {
     );
   }
 
-  // How many slots of the day are in each state, with their colors.
-  Widget _legend(List<Slot> slots) {
+  Widget _legend(List<Slot> slots) => HourLegend(slots: slots);
+}
+
+// Colour of an hour on the admin boards, and its state (past hours keep
+// the state they ended with).
+Color _hourColor(SlotStatus s) => switch (s) {
+      SlotStatus.available => AppColors.success,
+      SlotStatus.booked => AppColors.gold,
+      SlotStatus.full => AppColors.emergencyText,
+      SlotStatus.closed || SlotStatus.past => AppColors.muted,
+    };
+
+SlotStatus _adminStatus(Slot s) => s.capacity == 0
+    ? SlotStatus.closed
+    : s.count >= s.capacity
+        ? SlotStatus.full
+        : s.count > 0
+            ? SlotStatus.booked
+            : SlotStatus.available;
+
+// What each colour means, with how many hours of the day have it:
+// Empty (green), Partly booked (amber), Full (red), Closed (grey).
+class HourLegend extends StatelessWidget {
+  const HourLegend({super.key, required this.slots});
+
+  final List<Slot> slots;
+
+  @override
+  Widget build(BuildContext context) {
+    String label(SlotStatus s) => switch (s) {
+          SlotStatus.available => context.t('Empty', 'Boş'),
+          SlotStatus.booked => context.t('Partly booked', 'Kısmen dolu'),
+          SlotStatus.full => context.t('Full', 'Dolu'),
+          _ => context.t('Closed', 'Kapalı'),
+        };
     return Wrap(
-      spacing: 10,
+      spacing: 16,
       runSpacing: 8,
       children: [
         for (final status in [
@@ -192,16 +240,203 @@ class _AdminScheduleState extends State<AdminSchedule> {
           SlotStatus.full,
           SlotStatus.closed
         ])
-          _StatusChip(status,
-              count: slots.where((s) => s.status == status).length),
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              width: 14,
+              height: 14,
+              decoration: BoxDecoration(
+                  color: _hourColor(status),
+                  borderRadius: BorderRadius.circular(4)),
+            ),
+            const SizedBox(width: 6),
+            Text(
+                '${label(status)}: '
+                '${slots.where((s) => _adminStatus(s) == status).length}',
+                style: const TextStyle(fontWeight: FontWeight.w700)),
+          ]),
       ],
+    );
+  }
+}
+
+// The 24 hours of a day as coloured boxes: green EMPTY, amber "2 / 3",
+// red FULL, grey CLOSED. Hours that have passed are faded.
+class HourBoard extends StatelessWidget {
+  const HourBoard({super.key, required this.slots, this.onTap});
+
+  final List<Slot> slots;
+  final ValueChanged<Slot>? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, constraints) {
+      // 8 boxes a row on wide screens, 4 on phones.
+      final perRow = constraints.maxWidth >= 900
+          ? 8
+          : constraints.maxWidth >= 500
+              ? 6
+              : 4;
+      const gap = 8.0;
+      final width = (constraints.maxWidth - gap * (perRow - 1)) / perRow;
+      return Wrap(
+        spacing: gap,
+        runSpacing: gap,
+        children: [
+          for (final s in slots)
+            SizedBox(width: width, child: _HourBox(slot: s, onTap: onTap)),
+        ],
+      );
+    });
+  }
+}
+
+class _HourBox extends StatelessWidget {
+  const _HourBox({required this.slot, this.onTap});
+
+  final Slot slot;
+  final ValueChanged<Slot>? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = _adminStatus(slot);
+    final color = _hourColor(status);
+    final big = switch (status) {
+      SlotStatus.available => context.t('EMPTY', 'BOŞ'),
+      SlotStatus.booked => '${slot.count} / ${slot.capacity}',
+      SlotStatus.full => context.t('FULL', 'DOLU'),
+      _ => context.t('CLOSED', 'KAPALI'),
+    };
+    final small = switch (status) {
+      SlotStatus.available =>
+        context.t('${slot.capacity} free', '${slot.capacity} boş yer'),
+      SlotStatus.booked =>
+        context.t('${slot.left} free', '${slot.left} boş yer'),
+      SlotStatus.full => '${slot.count} / ${slot.capacity}',
+      _ => '',
+    };
+    return Opacity(
+      opacity: slot.isPast ? 0.45 : 1,
+      child: Material(
+        color: status == SlotStatus.full ? color : color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: onTap == null ? null : () => onTap!(slot),
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+            child: Column(
+              children: [
+                Text(slot.time,
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        color: status == SlotStatus.full
+                            ? Colors.white
+                            : AppColors.text)),
+                const SizedBox(height: 2),
+                FittedBox(
+                  child: Text(big,
+                      style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 17,
+                          color: status == SlotStatus.full
+                              ? Colors.white
+                              : color)),
+                ),
+                Text(small,
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: status == SlotStatus.full
+                            ? Colors.white
+                            : AppColors.muted)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Today's hours as a colour board, for the overview page, with a button
+// to open the full schedule.
+class TodayHours extends StatefulWidget {
+  const TodayHours({super.key, required this.onOpenSchedule});
+
+  final VoidCallback onOpenSchedule;
+
+  @override
+  State<TodayHours> createState() => _TodayHoursState();
+}
+
+class _TodayHoursState extends State<TodayHours> {
+  final _day = DateTime(
+      DateTime.now().year, DateTime.now().month, DateTime.now().day);
+  late final _docs = scheduleStore.watchDay(_day);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: ListenableBuilder(
+        listenable: scheduleStore,
+        builder: (context, _) => StreamBuilder(
+          stream: _docs,
+          builder: (context, snap) {
+            final slots = snap.hasData
+                ? scheduleStore.slotsOf(_day, snap.data!)
+                : null;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                        context.t("Today's time slots",
+                            'Bugünün saat dilimleri'),
+                        style: const TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.w800)),
+                    TextButton.icon(
+                      onPressed: widget.onOpenSchedule,
+                      icon: const Icon(Icons.calendar_view_day_outlined),
+                      label: Text(context.t(
+                          'Open schedule (other days)',
+                          'Takvimi aç (diğer günler)')),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (snap.hasError)
+                  Text(context.t('Could not load the time slots.',
+                      'Saat dilimleri yüklenemedi.'))
+                else if (slots == null)
+                  const Center(child: CircularProgressIndicator())
+                else ...[
+                  HourLegend(slots: slots),
+                  const SizedBox(height: 12),
+                  HourBoard(slots: slots),
+                ],
+              ],
+            );
+          },
+        ),
+      ),
     );
   }
 }
 
 // One hour: status, places used, the slot's own limit, and its bookings.
 class _SlotRow extends StatelessWidget {
-  const _SlotRow({required this.slot});
+  const _SlotRow({super.key, required this.slot});
 
   final Slot slot;
 
@@ -400,12 +635,11 @@ class _BookingLine extends StatelessWidget {
   }
 }
 
-// Colored label for a slot state, optionally with how many slots.
+// Colored label for a slot state.
 class _StatusChip extends StatelessWidget {
-  const _StatusChip(this.status, {this.count});
+  const _StatusChip(this.status);
 
   final SlotStatus status;
-  final int? count;
 
   @override
   Widget build(BuildContext context) {
@@ -421,10 +655,7 @@ class _StatusChip extends StatelessWidget {
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Text(
-          count == null
-              ? status.label(context)
-              : '${status.label(context)}: $count',
+      child: Text(status.label(context),
           style: TextStyle(
               color: color, fontWeight: FontWeight.w700, fontSize: 12)),
     );

@@ -6,7 +6,9 @@
     "test": "node --test --test-concurrency=1 test/",
     "test:emulators": "firebase emulators:exec --only auth,firestore --project demo-koru \"npm test\"",
     "test:app": "firebase emulators:exec --only auth,firestore --project project-transportation-5b6d8 \"node scripts/seed-emulators.js && node scripts/run-app-flow.js\"",
-    "emulators": "firebase emulators:exec --ui --only auth,firestore --project project-transportation-5b6d8 \"node scripts/seed-emulators.js && echo Emulators ready, press Ctrl+C to stop && sleep 86400\""
+    "backup": "node scripts/backup-firestore.js",
+    "migrate:tracking": "node scripts/migrate-tracking.js",
+    "emulators": "firebase emulators:exec --ui --import=./emulator-data --export-on-exit=./emulator-data --only auth,firestore --project project-transportation-5b6d8 \"node scripts/seed-emulators.js && echo Emulators ready, press Ctrl+C to stop && sleep 86400\""
   },
   "dependencies": {
     "firebase-admin": "^14.5.0"

@@ -335,7 +335,7 @@ class SiteFooter extends StatelessWidget {
                 // Link to the staff-only admin login.
                 TextButton(
                   onPressed: () => Navigator.pushNamed(context, '/admin/login'),
-                  child: Text(context.t('Staff login', 'Personel girişi')),
+                  child: Text(context.t('Admin login', 'Yönetici girişi')),
                 ),
                 // Link to the driver login.
                 TextButton(

@@ -40,9 +40,13 @@ async function main() {
     ['mustafa123@koruhastane.com', 'koru2026', 'Mustafa'],
   ]) {
     const user = await account(email, password, name);
-    await db.doc(`drivers/${user.uid}`).set({
-      name, phone: '', vehicle: '', email: user.email, active: true,
-    });
+    // Only when missing, so details edited in the dashboard are kept.
+    const profile = db.doc(`drivers/${user.uid}`);
+    if (!(await profile.get()).exists) {
+      await profile.set({
+        name, phone: '', vehicle: '', email: user.email, active: true,
+      });
+    }
   }
 }
 

@@ -5,16 +5,20 @@ import '../data/feedback.dart';
 import '../lang.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'admin_schedule.dart';
 
 // "Overview" section of the admin dashboard: how many patients rode today,
 // yesterday and this month, a day-by-day chart, what kind of transport they
 // needed, which branches they went to, and the rides coming up.
 // Counts use the ride date (the day the patient is picked up).
 class AdminOverview extends StatefulWidget {
-  const AdminOverview({super.key, required this.onOpenStage});
+  const AdminOverview(
+      {super.key, required this.onOpenStage, required this.onOpenSchedule});
 
   // Opens the bookings section on one stage tab.
   final ValueChanged<Stage> onOpenStage;
+  // Opens the Schedule section.
+  final VoidCallback onOpenSchedule;
 
   @override
   State<AdminOverview> createState() => _AdminOverviewState();
@@ -124,6 +128,10 @@ class _AdminOverviewState extends State<AdminOverview> {
             ),
           ],
         ),
+        const SizedBox(height: 16),
+
+        // Which hours today are empty, partly booked or full.
+        TodayHours(onOpenSchedule: widget.onOpenSchedule),
         const SizedBox(height: 16),
 
         // Things that need a coordinator now.

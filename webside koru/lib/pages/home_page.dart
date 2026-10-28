@@ -714,74 +714,133 @@ class _ShuttlesState extends State<_Shuttles> {
   }
 }
 
-// Patient comments that staff chose to show (newest 3) and a button to
-// leave feedback. Before any comment is approved, only the button shows.
-class _PatientComments extends StatelessWidget {
+// Patient comments that staff chose to show and a button to leave
+// feedback. All approved comments take turns in random order, 3 at a time,
+// so every one of them appears. Before any comment is approved, only the
+// button shows.
+class _PatientComments extends StatefulWidget {
   const _PatientComments();
 
   @override
+  State<_PatientComments> createState() => _PatientCommentsState();
+}
+
+class _PatientCommentsState extends State<_PatientComments> {
+  static const _perPage = 3;
+
+  // Ids of the approved comments in shuffled order.
+  List<String> _order = [];
+  // Where the comments shown now start in _order.
+  int _start = 0;
+  late final Timer _turn;
+
+  @override
+  void initState() {
+    super.initState();
+    feedbackStore.addListener(_sync);
+    _sync();
+    _turn = Timer.periodic(const Duration(seconds: 8), (_) => _next());
+  }
+
+  @override
+  void dispose() {
+    feedbackStore.removeListener(_sync);
+    _turn.cancel();
+    super.dispose();
+  }
+
+  // Reshuffles when comments are approved, hidden or deleted.
+  void _sync() {
+    final ids = feedbackStore.published.map((f) => f.id).toList();
+    if (ids.length == _order.length && ids.every(_order.contains)) {
+      setState(() {}); // Same comments, but one may have been edited.
+      return;
+    }
+    setState(() {
+      _order = ids..shuffle();
+      _start = 0;
+    });
+  }
+
+  // Shows the next comments; after the last ones, starts a new shuffle.
+  void _next() {
+    if (_order.length <= _perPage) return;
+    setState(() {
+      _start += _perPage;
+      if (_start >= _order.length) {
+        _order.shuffle();
+        _start = 0;
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: feedbackStore,
-      builder: (context, _) {
-        final comments = feedbackStore.published.take(3).toList();
-        final button = OutlinedButton.icon(
-          onPressed: () => Navigator.pushNamed(context, '/feedback'),
-          icon: const Icon(Icons.rate_review_outlined, size: 18),
-          label: Text(context.t('Leave feedback', 'Yorum bırakın')),
-        );
-        return SectionContainer(
-          top: 24,
-          child: Column(
-            children: [
-              SectionHeading(
-                  context.t('What patients say', 'Hastalarımız ne diyor'),
-                  subtitle: comments.isEmpty
-                      ? context.t('Did you ride with us? Tell us how it went.',
-                          'Bizimle yolculuk ettiniz mi? Nasıl geçtiğini anlatın.')
-                      : null,
-                  size: 36,
-                  center: true),
-              const SizedBox(height: 24),
-              if (comments.isNotEmpty) ...[
-                ResponsiveGrid(
-                  children: [
-                    for (final f in comments)
-                      Container(
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: AppColors.border),
-                          borderRadius: BorderRadius.circular(AppRadius.card),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Stars(f.rating),
-                            const SizedBox(height: 12),
-                            Text('“${f.comment}”',
-                                style:
-                                    const TextStyle(fontSize: 16, height: 1.6)),
-                            const SizedBox(height: 12),
-                            // First name only, to protect the patient.
-                            Text(
-                                '${f.name.isEmpty ? context.t('A patient', 'Bir hasta') : f.name.split(' ').first}'
-                                ' · ${f.type.label(context)}',
-                                style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.muted)),
-                          ],
-                        ),
+    final byId = {for (final f in feedbackStore.published) f.id: f};
+    // Fills up from the start of the list when the last page is short.
+    final comments = [
+      for (var i = 0; i < _order.length && i < _perPage; i++)
+        byId[_order[(_start + i) % _order.length]]!,
+    ];
+    final button = OutlinedButton.icon(
+      onPressed: () => Navigator.pushNamed(context, '/feedback'),
+      icon: const Icon(Icons.rate_review_outlined, size: 18),
+      label: Text(context.t('Leave feedback', 'Yorum bırakın')),
+    );
+    return SectionContainer(
+      top: 24,
+      child: Column(
+        children: [
+          SectionHeading(
+              context.t('What patients say', 'Hastalarımız ne diyor'),
+              subtitle: comments.isEmpty
+                  ? context.t('Did you ride with us? Tell us how it went.',
+                      'Bizimle yolculuk ettiniz mi? Nasıl geçtiğini anlatın.')
+                  : null,
+              size: 36,
+              center: true),
+          const SizedBox(height: 24),
+          if (comments.isNotEmpty) ...[
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 400),
+              child: ResponsiveGrid(
+                key: ValueKey(comments.map((f) => f.id).join()),
+                children: [
+                  for (final f in comments)
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: AppColors.border),
+                        borderRadius: BorderRadius.circular(AppRadius.card),
                       ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-              ],
-              button,
-            ],
-          ),
-        );
-      },
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Stars(f.rating),
+                          const SizedBox(height: 12),
+                          Text('“${f.comment}”',
+                              style:
+                                  const TextStyle(fontSize: 16, height: 1.6)),
+                          const SizedBox(height: 12),
+                          // First name only, to protect the patient.
+                          Text(
+                              '${f.name.isEmpty ? context.t('A patient', 'Bir hasta') : f.name.split(' ').first}'
+                              ' · ${f.type.label(context)}',
+                              style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.muted)),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
+          button,
+        ],
+      ),
     );
   }
 }

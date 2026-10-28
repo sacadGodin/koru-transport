@@ -63,8 +63,14 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
         SignInResult.notStaff => _driver
             ? context.t('This account is not an active driver account.',
                 'Bu hesap aktif bir sürücü hesabı değil.')
-            : context.t('This account does not have staff access.',
-                'Bu hesabın personel erişimi yok.'),
+            : context.t('This account does not have admin access.',
+                'Bu hesabın yönetici erişimi yok.'),
+        SignInResult.tooManyTries => context.t(
+            'Too many tries. Wait a few minutes or reset your password.',
+            'Çok fazla deneme. Birkaç dakika bekleyin veya şifrenizi sıfırlayın.'),
+        SignInResult.offline => context.t(
+            'No internet connection. Check your connection and try again.',
+            'İnternet bağlantısı yok. Bağlantınızı kontrol edip tekrar deneyin.'),
         _ => context.t('Could not sign in. Please try again.',
             'Giriş yapılamadı. Lütfen tekrar deneyin.'),
       };
@@ -110,7 +116,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
           Text(
               _driver
                   ? context.t('Driver portal', 'Sürücü portalı')
-                  : context.t('Staff portal', 'Personel portalı'),
+                  : context.t('Admin portal', 'Yönetici portalı'),
               style: const TextStyle(
                   color: Colors.white,
                   fontSize: 40,
@@ -154,7 +160,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                 Text(
                     _driver
                         ? context.t('Driver sign in', 'Sürücü girişi')
-                        : context.t('Staff sign in', 'Personel girişi'),
+                        : context.t('Admin sign in', 'Yönetici girişi'),
                     style: const TextStyle(
                         fontSize: 30, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 8),
@@ -171,6 +177,10 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                   controller: _email,
                   validator: _required,
                   keyboardType: TextInputType.emailAddress,
+                  // Stop phone keyboards from changing the email.
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  autofillHints: const [AutofillHints.email],
                   decoration: InputDecoration(
                       labelText: context.t('Email', 'E-posta'),
                       prefixIcon: const Icon(Icons.mail_outline)),
@@ -180,6 +190,9 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                   controller: _password,
                   validator: _required,
                   obscureText: _hidePassword,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  autofillHints: const [AutofillHints.password],
                   onFieldSubmitted: (_) => _signIn(),
                   decoration: InputDecoration(
                     labelText: context.t('Password', 'Şifre'),

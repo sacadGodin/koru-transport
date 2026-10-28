@@ -70,3 +70,9 @@ node_modules/
 
 # macOS
 .DS_Store
+
+# Saved local emulator data
+emulator-data/
+
+# Database backups: contain patient data, never commit
+backups/

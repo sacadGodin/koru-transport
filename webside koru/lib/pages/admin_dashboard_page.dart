@@ -139,7 +139,9 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       builder: (context, _) => SingleChildScrollView(
         padding: EdgeInsets.all(Responsive.isMobile(context) ? 16 : 32),
         child: switch (_view) {
-          _View.overview => AdminOverview(onOpenStage: _openStage),
+          _View.overview => AdminOverview(
+              onOpenStage: _openStage,
+              onOpenSchedule: () => setState(() => _view = _View.schedule)),
           _View.schedule => const AdminSchedule(),
           _View.feedback => const _FeedbackList(),
           _View.drivers => const _DriverList(),

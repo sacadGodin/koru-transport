@@ -26,6 +26,9 @@ const PORT = 5055;
 console.log('Building the flow check web app...');
 execFileSync('flutter', ['build', 'web', '-t', 'tool/flow_check.dart',
   '--dart-define=USE_EMULATORS=true',
+  // Emulator ports as "firebase emulators:exec" started them.
+  `--dart-define=FIRESTORE_PORT=${process.env.FIRESTORE_EMULATOR_HOST.split(':').pop()}`,
+  `--dart-define=AUTH_PORT=${(process.env.FIREBASE_AUTH_EMULATOR_HOST || ':9099').split(':').pop()}`,
   '-o', out, '--no-tree-shake-icons'], { cwd: site, stdio: 'inherit' });
 
 const types = {

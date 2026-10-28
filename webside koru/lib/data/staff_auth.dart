@@ -3,7 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 // What happened when a staff member or driver tried to sign in.
-enum SignInResult { ok, wrongLogin, notStaff, failed }
+enum SignInResult { ok, wrongLogin, notStaff, tooManyTries, offline, failed }
 
 // Who can sign in: coordinators (admin dashboard) and drivers (driver
 // dashboard).
@@ -43,11 +43,20 @@ class StaffAuth extends ChangeNotifier {
     uid = isStaff || isDriver ? user.uid : null;
   }
 
+  // Phone keyboards (especially Turkish ones) may capitalise the first letter
+  // or type a dotless ı / dotted İ, which Firebase would see as a different
+  // email.
+  static String cleanEmail(String email) => email
+      .trim()
+      .replaceAll('ı', 'i')
+      .replaceAll('İ', 'i')
+      .toLowerCase();
+
   Future<SignInResult> signIn(String email, String password,
       {Role role = Role.staff}) async {
     try {
       final cred = await _auth.signInWithEmailAndPassword(
-          email: email, password: password);
+          email: cleanEmail(email), password: password);
       final user = cred.user!;
       final allowed = switch (role) {
         Role.staff => await _onStaffList(user),
@@ -70,6 +79,8 @@ class StaffAuth extends ChangeNotifier {
         'user-not-found' ||
         'invalid-email' =>
           SignInResult.wrongLogin,
+        'too-many-requests' => SignInResult.tooManyTries,
+        'network-request-failed' => SignInResult.offline,
         _ => SignInResult.failed,
       };
     } catch (e) {
@@ -83,7 +94,7 @@ class StaffAuth extends ChangeNotifier {
   // account, so a wrong email also returns true.
   Future<bool> sendPasswordReset(String email) async {
     try {
-      await _auth.sendPasswordResetEmail(email: email);
+      await _auth.sendPasswordResetEmail(email: cleanEmail(email));
       return true;
     } on FirebaseAuthException catch (e) {
       debugPrint('Password reset failed: ${e.code}');

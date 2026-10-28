@@ -234,8 +234,10 @@ Future<void> main() async {
   try {
     await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform);
-    await FirebaseAuth.instance.useAuthEmulator('localhost', 9099);
-    FirebaseFirestore.instance.useFirestoreEmulator('localhost', 8080);
+    await FirebaseAuth.instance.useAuthEmulator('localhost',
+        const int.fromEnvironment('AUTH_PORT', defaultValue: 9099));
+    FirebaseFirestore.instance.useFirestoreEmulator('localhost',
+        const int.fromEnvironment('FIRESTORE_PORT', defaultValue: 8080));
     await runFlow().timeout(const Duration(minutes: 2));
     print('FLOW OK');
     _showResult('FLOW OK');
