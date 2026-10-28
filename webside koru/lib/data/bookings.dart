@@ -77,7 +77,9 @@ extension MobilityNeedText on MobilityNeed {
 // The stages a booking moves through, in order. The admin does every step:
 // New request -> (confirm) -> Confirmed -> (reserve) -> Reserved
 // -> (assign driver) -> Arranged.
-enum Stage { newRequest, confirmed, reserved, arranged }
+// Staff may cancel a booking at any stage (its place in the time slot is
+// freed) and restore it later, which starts it again as a new request.
+enum Stage { newRequest, confirmed, reserved, arranged, cancelled }
 
 extension StageText on Stage {
   String label(BuildContext context) => switch (this) {
@@ -85,6 +87,7 @@ extension StageText on Stage {
         Stage.confirmed => context.t('Confirmed', 'Onaylandı'),
         Stage.reserved => context.t('Reserved', 'Rezerve edildi'),
         Stage.arranged => context.t('Arranged', 'Araç atandı'),
+        Stage.cancelled => context.t('Cancelled', 'İptal edildi'),
       };
 
   // What the admin does next with bookings in this stage.
@@ -94,10 +97,55 @@ extension StageText on Stage {
         Stage.reserved =>
           context.t('Next: assign driver', 'Sıradaki: sürücü ata'),
         Stage.arranged => context.t('Ready to go', 'Yola hazır'),
+        Stage.cancelled =>
+          context.t('Time slot freed', 'Saat dilimi boşaltıldı'),
       };
 
-  // The stage that comes after this one (none after "arranged").
-  Stage? get next => this == Stage.arranged ? null : Stage.values[index + 1];
+  // The stage that comes after this one (none after "arranged", and a
+  // cancelled booking is only restored by hand).
+  Stage? get next => switch (this) {
+        Stage.newRequest => Stage.confirmed,
+        Stage.confirmed => Stage.reserved,
+        Stage.reserved => Stage.arranged,
+        Stage.arranged || Stage.cancelled => null,
+      };
+}
+
+// Bookings are taken in one-hour time slots, 00:00 to 23:00. Each slot has
+// a document slots/{id} counting the bookings in it, so the rules can
+// refuse a booking once the slot is full. The id is the day and the hour,
+// e.g. 2026-11-03T09.
+String slotId(DateTime day, int hour) =>
+    '${dayKey(day)}T${hour.toString().padLeft(2, '0')}';
+
+// The day part of a slot id, e.g. 2026-11-03.
+String dayKey(DateTime day) => '${day.year.toString().padLeft(4, '0')}-'
+    '${day.month.toString().padLeft(2, '0')}-'
+    '${day.day.toString().padLeft(2, '0')}';
+
+// The time slot a booking should hold a place in (none once cancelled).
+String? slotOf(Booking b) =>
+    b.stage == Stage.cancelled ? null : slotId(b.date, b.time.hour);
+
+// Bookings per slot when the admin has not set a number yet. Must match
+// defaultCapacity() in firestore.rules.
+const defaultSlotCapacity = 3;
+
+// How many bookings a slot takes: its own number if the admin set one
+// (0 = closed), otherwise the admin's number for every slot.
+int slotCapacity(Map<String, dynamic>? slot, Map<String, dynamic>? settings) =>
+    slot?['capacity'] as int? ??
+    settings?['capacity'] as int? ??
+    defaultSlotCapacity;
+
+// Thrown when the chosen time slot has no places left.
+class SlotFullException implements Exception {
+  const SlotFullException(this.slot);
+
+  final String slot;
+
+  @override
+  String toString() => 'Time slot $slot is fully booked';
 }
 
 // After the admin assigns a driver, the driver moves the trip through these
@@ -185,6 +233,11 @@ class Booking {
   LatLng? driverLocation;
   // Id of the patient's tracking copy (tracking/{trackingId}).
   String? trackingId;
+  // The time slot this booking holds a place in, as saved (null when it
+  // holds none: cancelled, or made before slots existed).
+  String? slot;
+  // When the patient sent the request.
+  DateTime? createdAt;
 
   // Same booking with the same values (to change a copy before saving).
   Booking copy() => Booking(
@@ -206,7 +259,9 @@ class Booking {
         ..driverUid = driverUid
         ..trip = trip
         ..driverLocation = driverLocation
-        ..trackingId = trackingId;
+        ..trackingId = trackingId
+        ..slot = slot
+        ..createdAt = createdAt;
 }
 
 // What the patient gets back after booking: the reference, the secret
@@ -271,17 +326,32 @@ class BookingStore extends ChangeNotifier {
   final _db = FirebaseFirestore.instance.collection('bookings');
   final _tracking = FirebaseFirestore.instance.collection('tracking');
   final _counter = FirebaseFirestore.instance.doc('counters/bookings');
+  final _slots = FirebaseFirestore.instance.collection('slots');
+  final _settings = FirebaseFirestore.instance.doc('settings/booking');
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _sub;
 
   final List<Booking> bookings = [];
 
+  // Each booking as last saved, to put back on screen if a change could
+  // not be saved.
+  final Map<String, Map<String, dynamic>> _saved = {};
+
+  // Bookings that arrive while a staff member has the site open (not the
+  // ones already there when it loaded). The dashboard shows a message.
+  final _arrivals = StreamController<Booking>.broadcast();
+  Stream<Booking> get arrivals => _arrivals.stream;
+
+  // How many requests are waiting to be confirmed.
+  int get waiting => bookings.where((b) => b.stage == Stage.newRequest).length;
+
   // Staff signed in: load all bookings (newest first) and keep them updated.
-  // Driver signed in: only their own trips, by date.
+  // Driver signed in: only their own trips, by date (not cancelled ones).
   // Signed out: forget them.
   void _listen() {
     _sub?.cancel();
     _sub = null;
     bookings.clear();
+    _saved.clear();
     notifyListeners();
     final Query<Map<String, dynamic>> query;
     if (staffAuth.isStaff) {
@@ -291,24 +361,75 @@ class BookingStore extends ChangeNotifier {
     } else {
       return;
     }
+    // Becomes true once the list has come from the server, so the bookings
+    // that were already there do not count as new.
+    var loaded = false;
     _sub = query.snapshots().listen(
       (snap) {
+        _saved
+          ..clear()
+          ..addAll({for (final d in snap.docs) d.id: d.data()});
         bookings
           ..clear()
           ..addAll(snap.docs.map((d) => _fromDoc(d.data())));
         if (staffAuth.isDriver) {
-          bookings.sort((a, b) => a.date.compareTo(b.date));
+          bookings
+            ..removeWhere((b) => b.stage == Stage.cancelled)
+            ..sort((a, b) => a.date.compareTo(b.date));
         }
+        if (loaded && staffAuth.isStaff) {
+          for (final change in snap.docChanges) {
+            if (change.type == DocumentChangeType.added) {
+              _arrivals.add(_fromDoc(change.doc.data()!));
+            }
+          }
+        }
+        if (!snap.metadata.isFromCache) loaded = true;
         notifyListeners();
       },
       onError: (Object e) => debugPrint('Loading bookings failed: $e'),
     );
   }
 
+  // Inside a transaction: checks there is room in slot [to] and returns the
+  // writes that free the place held in [from] and take one in [to] (either
+  // may be null). Reads must come before writes in a transaction, so the
+  // caller runs the returned writes after its own reads. Throws
+  // SlotFullException if [to] is full.
+  Future<void Function()> _moveSlot(
+      Transaction tx, String? from, String? to, String ref) async {
+    if (from == to) return () {};
+    final old = from == null ? null : await tx.get(_slots.doc(from));
+    final next = to == null ? null : await tx.get(_slots.doc(to));
+    final settings = to == null ? null : await tx.get(_settings);
+    final nextCount = next?.data()?['count'] as int? ?? 0;
+    if (next != null &&
+        nextCount >= slotCapacity(next.data(), settings!.data())) {
+      throw SlotFullException(to!);
+    }
+    return () {
+      final oldCount = old?.data()?['count'] as int? ?? 0;
+      if (old != null && oldCount > 0) {
+        tx.update(old.reference, {'count': oldCount - 1});
+      }
+      if (next != null) {
+        tx.set(next.reference, {
+          'date': to!.split('T').first,
+          'count': nextCount + 1,
+          'capacity': next.data()?['capacity'],
+          'lastRef': ref,
+        });
+      }
+    };
+  }
+
   // Sends a new booking from the website form. Takes the next number
-  // (KR-1001, KR-1002, ...) and saves the booking with its tracking copy in
-  // one step, so two patients never get the same number. Returns the
-  // reference and the secret tracking code. Throws if it could not be saved.
+  // (KR-1001, KR-1002, ...) and a place in the time slot, and saves the
+  // booking with its tracking copy in one step, so two patients never get
+  // the same number and a slot never takes more bookings than allowed.
+  // Returns the reference and the secret tracking code. Throws
+  // SlotFullException if the slot is full, or another error if it could
+  // not be saved.
   Future<BookingReceipt> add({
     required String patient,
     required String phone,
@@ -338,6 +459,8 @@ class BookingStore extends ChangeNotifier {
         notes: notes,
         pickup: pickup,
       )..trackingId = trackingIdFor('KR-$n', code);
+      booking.slot = slotOf(booking);
+      final takeSlot = await _moveSlot(tx, null, booking.slot, booking.ref);
       tx.set(_counter, {'next': n + 1});
       tx.set(_db.doc(booking.ref), {
         ..._toDoc(booking),
@@ -346,18 +469,49 @@ class BookingStore extends ChangeNotifier {
         'createdAt': FieldValue.serverTimestamp(),
       });
       tx.set(_tracking.doc(booking.trackingId), _trackingDoc(booking));
+      takeSlot();
       return booking;
     });
     return BookingReceipt(booking, code, booking.trackingId!);
   }
 
   // Moves a booking to the next stage and saves it (also saves any changes
-  // the admin made in the dialog, like date, time, driver). Returns false
-  // if it could not be saved.
-  Future<bool> advance(Booking booking) async {
+  // the admin made in the dialog, like date, time, driver). Returns null
+  // when saved, 'slot-full' if the new time slot has no room, or 'failed'.
+  Future<String?> advance(Booking booking) async {
     final next = booking.stage.next;
-    if (next == null) return false;
+    if (next == null) return 'failed';
     booking.stage = next;
+    notifyListeners();
+    return _save(booking);
+  }
+
+  // Cancels a booking and frees its place in the time slot. The patient
+  // sees "Cancelled" on the tracking page.
+  Future<String?> cancel(Booking booking) {
+    booking.stage = Stage.cancelled;
+    notifyListeners();
+    return _save(booking);
+  }
+
+  // Brings a cancelled booking back as a new request, without a driver.
+  // It needs a free place in its time slot again.
+  Future<String?> restore(Booking booking) {
+    booking
+      ..stage = Stage.newRequest
+      ..vehicle = null
+      ..driver = null
+      ..driverUid = null
+      ..trip = null;
+    notifyListeners();
+    return _save(booking);
+  }
+
+  // Moves a booking to another day and time, in a slot with room.
+  Future<String?> reschedule(Booking booking, DateTime date, TimeOfDay time) {
+    booking
+      ..date = date
+      ..time = time;
     notifyListeners();
     return _save(booking);
   }
@@ -395,19 +549,44 @@ class BookingStore extends ChangeNotifier {
     }
   }
 
-  // Saves the admin's changes to a booking. Returns false if it could not
-  // be saved.
-  Future<bool> _save(Booking b) async {
+  // Saves the admin's changes to a booking, with its tracking copy. If the
+  // time changed or the booking was cancelled or restored, its place moves
+  // to the right time slot in the same step. Returns null when saved,
+  // 'slot-full' if the new slot has no room, or 'failed'; either way the
+  // booking goes back to how it was saved.
+  Future<String?> _save(Booking b) async {
+    final slot = slotOf(b);
     try {
-      final batch = FirebaseFirestore.instance.batch()
-        ..update(_db.doc(b.ref), _toDoc(b));
-      _refreshTracking(batch, b);
-      await batch.commit();
-      return true;
+      await FirebaseFirestore.instance.runTransaction((tx) async {
+        // The slot as saved now (another coordinator may have changed it).
+        final saved = await tx.get(_db.doc(b.ref));
+        final moveSlot = await _moveSlot(
+            tx, saved.data()?['slot'] as String?, slot, b.ref);
+        tx.update(_db.doc(b.ref), {..._toDoc(b), 'slot': slot});
+        if (b.trackingId != null) {
+          tx.set(_tracking.doc(b.trackingId), _trackingDoc(b));
+        }
+        moveSlot();
+      });
+      b.slot = slot;
+      return null;
+    } on SlotFullException {
+      _undo(b);
+      return 'slot-full';
     } catch (e) {
       debugPrint('Saving booking ${b.ref} failed: $e');
-      return false;
+      _undo(b);
+      return 'failed';
     }
+  }
+
+  // Shows a booking as it was last saved again.
+  void _undo(Booking b) {
+    final saved = _saved[b.ref];
+    final i = bookings.indexOf(b);
+    if (saved == null || i < 0) return;
+    bookings[i] = _fromDoc(saved);
+    notifyListeners();
   }
 
   // Every change to a booking also updates the patient's tracking copy in
@@ -439,6 +618,7 @@ class BookingStore extends ChangeNotifier {
         'driver': b.driver,
         'driverUid': b.driverUid,
         'trip': b.trip?.name,
+        'slot': b.slot,
       };
 
   // Turns a saved Firestore document back into a Booking.
@@ -471,13 +651,16 @@ class BookingStore extends ChangeNotifier {
       ..driverLocation = driverLocation == null
           ? null
           : LatLng(driverLocation.latitude, driverLocation.longitude)
-      ..trackingId = d['trackingId'] as String?;
+      ..trackingId = d['trackingId'] as String?
+      ..slot = d['slot'] as String?
+      ..createdAt = (d['createdAt'] as Timestamp?)?.toDate();
   }
 
   @override
   void dispose() {
     staffAuth.removeListener(_listen);
     _sub?.cancel();
+    _arrivals.close();
     super.dispose();
   }
 }

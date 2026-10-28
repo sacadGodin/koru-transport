@@ -70,7 +70,7 @@ class _AdminOverviewState extends State<AdminOverview> {
     final waiting =
         bookingStore.bookings.where((b) => b.stage == Stage.newRequest).length;
     final todayNotReady =
-        _on(today).where((b) => b.stage != Stage.arranged).length;
+        _on(today).where((b) => b.stage.next != null).length;
 
     final selected = _inMonth(_month);
 
@@ -548,7 +548,9 @@ class _Upcoming extends StatelessWidget {
     // Finished trips are no longer upcoming.
     final rides = bookingStore.bookings.where((b) {
       final d = DateTime(b.date.year, b.date.month, b.date.day);
-      return (d == today || d == tomorrow) && b.trip != TripStatus.completed;
+      return (d == today || d == tomorrow) &&
+          b.trip != TripStatus.completed &&
+          b.stage != Stage.cancelled;
     }).toList()
       ..sort((a, b) {
         final byDay = a.date.compareTo(b.date);
@@ -592,7 +594,7 @@ class _Upcoming extends StatelessWidget {
                     '${DateTime(b.date.year, b.date.month, b.date.day) == today ? context.t('Today', 'Bugün') : context.t('Tomorrow', 'Yarın')}'
                     '  ·  ${b.ref}  ·  ${b.from} → ${b.branch}',
                     overflow: TextOverflow.ellipsis),
-                trailing: _StageBadge(b.stage),
+                trailing: StageBadge(b.stage),
               ),
             ),
         ],
@@ -601,9 +603,10 @@ class _Upcoming extends StatelessWidget {
   }
 }
 
-// Small colored label with the booking's stage.
-class _StageBadge extends StatelessWidget {
-  const _StageBadge(this.stage);
+// Small colored label with the booking's stage (also used by the
+// schedule).
+class StageBadge extends StatelessWidget {
+  const StageBadge(this.stage, {super.key});
 
   final Stage stage;
 
@@ -614,6 +617,7 @@ class _StageBadge extends StatelessWidget {
       Stage.confirmed => AppColors.gold,
       Stage.reserved => AppColors.blue,
       Stage.arranged => AppColors.success,
+      Stage.cancelled => AppColors.muted,
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

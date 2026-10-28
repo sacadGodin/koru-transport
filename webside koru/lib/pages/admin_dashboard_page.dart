@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../data/bookings.dart';
@@ -13,12 +15,17 @@ import '../widgets/common.dart';
 import '../widgets/site_layout.dart';
 import 'admin_login_page.dart';
 import 'admin_overview.dart';
+import 'admin_schedule.dart';
 
 // Admin dashboard. The admin confirms new requests, books the date, time and
 // vehicle type, then assigns the vehicle and driver.
 // Each booking moves: New request -> Confirmed -> Reserved -> Arranged.
 // After that, the driver moves the trip forward from the driver dashboard
-// and the admin sees each step live.
+// and the admin sees each step live. Any booking can be rescheduled or
+// cancelled (and a cancelled one restored) from its ⋮ menu.
+// The "Schedule" section shows each day's one-hour slots, how full they
+// are and who booked them, and sets how many bookings a slot takes.
+// A message pops up when a new booking arrives.
 // The "Drivers" section adds, edits and deletes driver accounts and
 // switches them on or off.
 // The "Messages" section lists what visitors sent with the contact form.
@@ -34,7 +41,15 @@ class AdminDashboardPage extends StatefulWidget {
 }
 
 // The sections of the dashboard (chosen in the side menu).
-enum _View { overview, bookings, drivers, messages, feedback, shuttles }
+enum _View {
+  overview,
+  bookings,
+  schedule,
+  drivers,
+  messages,
+  feedback,
+  shuttles
+}
 
 class _AdminDashboardPageState extends State<AdminDashboardPage> {
   // The section that is open.
@@ -46,10 +61,35 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   // Text typed in the bookings search box (patient, phone or ref).
   final _search = TextEditingController();
 
+  // New bookings arriving while the dashboard is open.
+  StreamSubscription<Booking>? _arrivals;
+
+  @override
+  void initState() {
+    super.initState();
+    _arrivals = bookingStore.arrivals.listen(_announce);
+  }
+
   @override
   void dispose() {
+    _arrivals?.cancel();
     _search.dispose();
     super.dispose();
+  }
+
+  // "New booking KR-1005 · 03.11.2026 09:00" with a button to open it.
+  void _announce(Booking b) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      duration: const Duration(seconds: 10),
+      content: Text(
+          '${context.t('New booking', 'Yeni rezervasyon')} ${b.ref} · '
+          '${b.patient} · ${formatDate(b.date)} ${formatTime(b.time)}'),
+      action: SnackBarAction(
+        label: context.t('Open', 'Aç'),
+        onPressed: () => _openStage(b.stage),
+      ),
+    ));
   }
 
   // Opens the bookings section on one stage tab (used by the overview).
@@ -60,21 +100,24 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
   // Runs the action button of a row and moves the booking to the next stage.
   // Reserving and assigning a driver first open a small form in a dialog.
+  // If the new time slot is full, nothing changes and a message says so.
   Future<void> _act(Booking booking) async {
+    bool? go;
     switch (booking.stage) {
       case Stage.newRequest:
-        bookingStore.advance(booking);
+        go = true;
       case Stage.confirmed:
-        final saved = await showDialog<bool>(
+        go = await showDialog<bool>(
             context: context, builder: (_) => _ReserveDialog(booking));
-        if (saved == true) bookingStore.advance(booking);
       case Stage.reserved:
-        final saved = await showDialog<bool>(
+        go = await showDialog<bool>(
             context: context, builder: (_) => _DispatchDialog(booking));
-        if (saved == true) bookingStore.advance(booking);
-      case Stage.arranged:
-        break;
+      case Stage.arranged || Stage.cancelled:
+        return;
     }
+    if (go != true) return;
+    final error = await bookingStore.advance(booking);
+    if (mounted) showSaveError(context, error);
   }
 
   @override
@@ -97,6 +140,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         padding: EdgeInsets.all(Responsive.isMobile(context) ? 16 : 32),
         child: switch (_view) {
           _View.overview => AdminOverview(onOpenStage: _openStage),
+          _View.schedule => const AdminSchedule(),
           _View.feedback => const _FeedbackList(),
           _View.drivers => const _DriverList(),
           _View.messages => const _MessageList(),
@@ -134,6 +178,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
               title: Text(switch (_view) {
                 _View.overview => context.t('Overview', 'Genel bakış'),
                 _View.bookings => context.t('Bookings', 'Rezervasyonlar'),
+                _View.schedule => context.t('Schedule', 'Takvim'),
                 _View.drivers => context.t('Drivers', 'Sürücüler'),
                 _View.messages => context.t('Messages', 'Mesajlar'),
                 _View.feedback => context.t('Feedback', 'Görüşler'),
@@ -175,9 +220,9 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   // One count tile per stage. Tapping a tile opens that tab.
   Widget _stageTiles() {
     return ResponsiveGrid(
-      desktopColumns: 4,
-      tabletColumns: 2,
+      tabletColumns: 3,
       spacing: 16,
+      desktopColumns: 5,
       children: [
         for (final stage in Stage.values)
           Material(
@@ -218,7 +263,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     );
   }
 
-  // Tabs: New requests / Confirmed / Reserved / Arranged.
+  // Tabs: New requests / Confirmed / Reserved / Arranged / Cancelled.
   Widget _tabs() {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -276,7 +321,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       Stage.newRequest => context.t('Confirm', 'Onayla'),
       Stage.confirmed => context.t('Reserve', 'Rezerve et'),
       Stage.reserved => context.t('Assign driver', 'Sürücü ata'),
-      Stage.arranged => '',
+      Stage.arranged || Stage.cancelled => '',
     };
 
     return Container(
@@ -315,6 +360,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                           Text(context.t('Vehicle / driver', 'Araç / sürücü'))),
                   if (_tab == Stage.arranged)
                     DataColumn(label: Text(context.t('Trip', 'Yolculuk'))),
+                  DataColumn(label: Text(context.t('Received', 'Alındı'))),
                   DataColumn(label: Text(context.t('Action', 'İşlem'))),
                 ],
                 rows: [
@@ -322,7 +368,16 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                     DataRow(cells: [
                       DataCell(Text(b.ref,
                           style: const TextStyle(fontWeight: FontWeight.w800))),
-                      DataCell(Text(b.patient)),
+                      // Name, and the phone to call them on.
+                      DataCell(Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(b.patient),
+                            Text(b.phone,
+                                style: const TextStyle(
+                                    fontSize: 12, color: AppColors.muted)),
+                          ])),
                       DataCell(Row(mainAxisSize: MainAxisSize.min, children: [
                         Icon(b.type.icon, size: 18, color: AppColors.blue),
                         const SizedBox(width: 6),
@@ -350,21 +405,32 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                                 const SizedBox(width: 6),
                                 Text(b.trip!.label(context)),
                               ])),
-                      // Moves the booking to the next stage.
-                      DataCell(b.stage != Stage.arranged
-                          ? FilledButton(
+                      // When the patient sent the request.
+                      DataCell(Text(b.createdAt == null
+                          ? '—'
+                          : '${formatDate(b.createdAt!)} '
+                              '${formatTime(TimeOfDay.fromDateTime(b.createdAt!))}')),
+                      // Moves the booking to the next stage; the ⋮ menu
+                      // reschedules, cancels or restores it.
+                      DataCell(Row(mainAxisSize: MainAxisSize.min, children: [
+                        switch (b.stage) {
+                          Stage.arranged => Chip(
+                              avatar: const Icon(Icons.check,
+                                  size: 16, color: AppColors.success),
+                              label: Text(context.t('Done', 'Tamamlandı')),
+                            ),
+                          Stage.cancelled => const SizedBox.shrink(),
+                          _ => FilledButton(
                               onPressed: () => _act(b),
                               style: FilledButton.styleFrom(
                                   minimumSize: const Size(44, 40),
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 16, vertical: 10)),
                               child: Text(actionLabel),
-                            )
-                          : Chip(
-                              avatar: const Icon(Icons.check,
-                                  size: 16, color: AppColors.success),
-                              label: Text(context.t('Done', 'Tamamlandı')),
-                            )),
+                            ),
+                        },
+                        BookingMenu(b),
+                      ])),
                     ]),
                 ],
               ),
@@ -423,11 +489,22 @@ class _SideMenu extends StatelessWidget {
                   context.t('Overview', 'Genel bakış'),
                   () => _open(context, _View.overview),
                   selected: view == _View.overview),
+              // Shows how many requests are waiting to be confirmed.
+              ListenableBuilder(
+                listenable: bookingStore,
+                builder: (context, _) => link(
+                    Icons.dashboard_outlined,
+                    bookingStore.waiting == 0
+                        ? context.t('Bookings', 'Rezervasyonlar')
+                        : '${context.t('Bookings', 'Rezervasyonlar')} (${bookingStore.waiting})',
+                    () => _open(context, _View.bookings),
+                    selected: view == _View.bookings),
+              ),
               link(
-                  Icons.dashboard_outlined,
-                  context.t('Bookings', 'Rezervasyonlar'),
-                  () => _open(context, _View.bookings),
-                  selected: view == _View.bookings),
+                  Icons.calendar_view_day_outlined,
+                  context.t('Schedule', 'Takvim'),
+                  () => _open(context, _View.schedule),
+                  selected: view == _View.schedule),
               link(Icons.badge_outlined, context.t('Drivers', 'Sürücüler'),
                   () => _open(context, _View.drivers),
                   selected: view == _View.drivers),

@@ -120,11 +120,11 @@ Future<void> runFlow() async {
       bookingStore, () => bookingStore.bookings.any((b) => b.ref == ref));
   expect(booking().patient, 'Ayşe Yılmaz');
 
-  check(await bookingStore.advance(booking()), 'booking saved');
+  expect(await bookingStore.advance(booking()), null);
   await waitForTracking(token, (i) => i.stage == Stage.confirmed);
 
   booking().time = const TimeOfDay(hour: 10, minute: 0);
-  check(await bookingStore.advance(booking()), 'booking saved');
+  expect(await bookingStore.advance(booking()), null);
   await waitForTracking(token, (i) => i.stage == Stage.reserved);
 
   booking()
@@ -132,7 +132,7 @@ Future<void> runFlow() async {
     ..driver = driver.name
     ..driverUid = driver.uid
     ..trip = TripStatus.assigned;
-  check(await bookingStore.advance(booking()), 'booking saved');
+  expect(await bookingStore.advance(booking()), null);
   info = await waitForTracking(token, (i) => i.stage == Stage.arranged);
   expect(info.trip, TripStatus.assigned);
   expect(info.driver, 'Mehmet');

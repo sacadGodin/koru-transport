@@ -3,9 +3,11 @@
 //   patient books -> looks up with ref + code -> watches live tracking
 //   staff add drivers, confirm, reserve, assign a driver
 //   driver sees only their trips and moves the trip forward
+//   time slots: a full hour takes no more bookings; staff set the limits,
+//   cancel, restore and reschedule
 // plus the things that must NOT work (reading other people's data, faking
-// booking numbers or tracking copies, skipping steps, making yourself a
-// driver).
+// booking numbers, tracking copies or slot counts, skipping steps, making
+// yourself a driver).
 //
 // Run with:  npm run test:emulators   (from the firebase-tests folder)
 
@@ -29,15 +31,19 @@ const {
 const projectId = process.env.GCLOUD_PROJECT || 'demo-koru';
 const adminSdk = adminApp.initializeApp({ projectId }, 'admin');
 
+// Where the emulators run (set by "firebase emulators:exec").
+const authHost = process.env.FIREBASE_AUTH_EMULATOR_HOST || '127.0.0.1:9099';
+const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080';
+
 // One browser = one Firebase app with its own sign-in.
 const apps = [];
 function browser(name) {
   const app = initializeApp({ projectId, apiKey: 'fake-key' }, name);
   apps.push(app);
   const auth = getAuth(app);
-  connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+  connectAuthEmulator(auth, `http://${authHost}`, { disableWarnings: true });
   const db = getFirestore(app);
-  connectFirestoreEmulator(db, '127.0.0.1', 8080);
+  connectFirestoreEmulator(db, ...firestoreHost.split(':').map((v, i) => (i ? Number(v) : v)));
   return {
     auth, db,
     signIn: (email, pw) => signInWithEmailAndPassword(auth, email, pw),
@@ -84,30 +90,72 @@ const form = {
   pickup: new GeoPoint(39.92, 32.85),
 };
 
-// Books like the website: next number, booking and tracking copy in one
-// transaction. [change] lets a test tamper with what is written.
-async function book(db, { code = 'ABCD2345', change = (w) => w } = {}) {
+// Books like the website: next number, booking, tracking copy and a place
+// in the time slot in one transaction. [at] changes the date, time and
+// slot. [change] lets a test tamper with what is written. Unlike the
+// website it does not check the slot has room first: the rules must.
+async function book(db, { code = 'ABCD2345', at = {}, change = (w) => w } = {}) {
+  const when = { date: form.date, time: form.time, slot: '2026-11-03T09', ...at };
   return runTransaction(db, async (tx) => {
     const counterRef = doc(db, 'counters', 'bookings');
     const counter = await tx.get(counterRef);
+    const slot = await tx.get(doc(db, 'slots', when.slot));
     const n = counter.exists() ? counter.get('next') : 1001;
     const ref = `KR-${n}`;
     const trackingId = trackingIdFor(ref, code);
     const booking = {
-      ...form, ref, stage: 'newRequest', vehicle: null, driver: null,
+      ...form, date: when.date, time: when.time, slot: when.slot,
+      ref, stage: 'newRequest', vehicle: null, driver: null,
       driverUid: null, trip: null, driverLocation: null, trackingId,
       createdAt: serverTimestamp(),
     };
     const w = change({
       counter: { next: n + 1 }, ref, booking,
       tracking: trackingDoc(booking), trackingId,
+      slotId: when.slot,
+      slot: {
+        date: when.slot.split('T')[0],
+        count: (slot.exists() ? slot.get('count') : 0) + 1,
+        capacity: slot.exists() ? slot.get('capacity') : null,
+        lastRef: ref,
+      },
     });
     tx.set(counterRef, w.counter);
     tx.set(doc(db, 'bookings', w.ref), w.booking);
     if (w.tracking) tx.set(doc(db, 'tracking', w.trackingId), w.tracking);
+    if (w.slot) tx.set(doc(db, 'slots', w.slotId), w.slot);
     return { ref, code, trackingId };
   });
 }
+
+// Staff change that moves the booking's place to another slot (or frees
+// it, with slot: null), like the dashboard does for cancel, restore and
+// reschedule.
+async function move(db, ref, changes) {
+  return runTransaction(db, async (tx) => {
+    const bookingRef = doc(db, 'bookings', ref);
+    const before = (await tx.get(bookingRef)).data();
+    const after = { ...before, ...changes };
+    const from = before.slot ?? null;
+    const to = after.slot ?? null;
+    const old = from && from !== to ? await tx.get(doc(db, 'slots', from)) : null;
+    const next = to && from !== to ? await tx.get(doc(db, 'slots', to)) : null;
+    tx.update(bookingRef, changes);
+    tx.set(doc(db, 'tracking', after.trackingId), trackingDoc(after));
+    if (old) tx.update(old.ref, { count: old.get('count') - 1 });
+    if (next) {
+      tx.set(next.ref, {
+        date: to.split('T')[0],
+        count: (next.exists() ? next.get('count') : 0) + 1,
+        capacity: next.exists() ? next.get('capacity') : null,
+        lastRef: ref,
+      });
+    }
+  });
+}
+
+const slotCount = async (db, id) =>
+  (await getDoc(doc(db, 'slots', id))).get('count');
 
 // Saves a booking change together with its tracking copy, like the
 // dashboards do. [location] is the driver's position for the patient.
@@ -171,6 +219,10 @@ test('full flow: patient booking to completed trip', async (t) => {
     await fake((w) => ({ ...w, tracking: null }));
     await fake((w) => ({ ...w, tracking: { ...w.tracking, stage: 'arranged' } }));
     await fake((w) => ({ ...w, tracking: { ...w.tracking, patient: 'Ayşe' } }));
+    // Not taking a place in the slot, or a slot that is not the ride's hour.
+    await fake((w) => ({ ...w, slot: null }));
+    await fake((w) => ({ ...w, booking: { ...w.booking, slot: '2026-11-03T15' } }));
+    await fake((w) => ({ ...w, slot: { ...w.slot, count: w.slot.count + 2 } }));
     // Writing over someone else's tracking copy.
     await fake((w) => ({
       ...w, trackingId: booked.trackingId,
@@ -384,4 +436,71 @@ test('staff edit and delete drivers', async () => {
   assert.equal((await getDoc(profile)).exists(), false);
   await denied(getDocs(query(collection(driver.db, 'bookings'),
       where('driverUid', '==', uid))));
+});
+
+test('time slots: a full hour takes no more bookings', async () => {
+  await addStaff('slots@koru.test', 'staff-pass-654');
+  const staff = browser('slotStaff');
+  const visitor = browser('slotVisitor');
+  await staff.signIn('slots@koru.test', 'staff-pass-654');
+  const nine = { date: Timestamp.fromMillis(Date.UTC(2026, 11, 7)), time: '09:00', slot: '2026-12-07T09' };
+  const ten = { ...nine, time: '10:00', slot: '2026-12-07T10' };
+
+  // Anyone sees how full a day is; only staff set the usual limit (1-50).
+  const settings = (capacity) => ({ capacity, updatedAt: serverTimestamp() });
+  await denied(setDoc(doc(visitor.db, 'settings', 'booking'), settings(50)));
+  await denied(setDoc(doc(staff.db, 'settings', 'booking'), settings(0)));
+  await denied(setDoc(doc(staff.db, 'settings', 'booking'), settings(51)));
+  await setDoc(doc(staff.db, 'settings', 'booking'), settings(2));
+  assert.equal((await getDoc(doc(visitor.db, 'settings', 'booking'))).get('capacity'), 2);
+
+  // Two bookings fill 09:00; the third is refused, however it is written.
+  const a = await book(visitor.db, { code: 'SLOTAAAA', at: nine });
+  await book(browser('slotVisitor2').db, { code: 'SLOTBBBB', at: nine });
+  assert.equal(await slotCount(visitor.db, nine.slot), 2);
+  await denied(book(visitor.db, { code: 'SLOTCCCC', at: nine }));
+  await denied(book(visitor.db, { code: 'SLOTCCCC', at: nine,
+    change: (w) => ({ ...w, slot: { ...w.slot, count: 2 } }) }));
+  await denied(book(visitor.db, { code: 'SLOTCCCC', at: nine,
+    change: (w) => ({ ...w, slot: null }) }));
+  const day = await getDocs(query(collection(visitor.db, 'slots'),
+      where('date', '==', '2026-12-07')));
+  assert.deepEqual(day.docs.map((d) => [d.id, d.get('count')]), [[nine.slot, 2]]);
+
+  // Visitors cannot fill, empty or reopen a slot by hand.
+  await denied(setDoc(doc(visitor.db, 'slots', ten.slot),
+      { date: '2026-12-07', count: 1, capacity: null, lastRef: a.ref }));
+  await denied(updateDoc(doc(visitor.db, 'slots', nine.slot), { count: 0 }));
+  await denied(updateDoc(doc(visitor.db, 'slots', nine.slot), { capacity: 10 }));
+  await denied(deleteDoc(doc(visitor.db, 'slots', nine.slot)));
+
+  // Staff cancel a booking: its place is free, and a visitor can take it.
+  await move(staff.db, a.ref, { stage: 'cancelled', slot: null });
+  assert.equal(await slotCount(staff.db, nine.slot), 1);
+  assert.equal((await getDoc(doc(visitor.db, 'tracking', a.trackingId))).get('stage'),
+      'cancelled');
+  const c = await book(visitor.db, { code: 'SLOTDDDD', at: nine });
+
+  // Restoring it needs room: 09:00 is full again.
+  await denied(move(staff.db, a.ref, { stage: 'newRequest', slot: nine.slot }));
+
+  // Staff give 09:00 its own limit of 3: now it fits. Closing 10:00 (0)
+  // stops bookings there.
+  const ownLimit = (id, capacity, count) =>
+    setDoc(doc(staff.db, 'slots', id), { date: '2026-12-07', count, capacity, lastRef: null });
+  await ownLimit(nine.slot, 3, 2);
+  await move(staff.db, a.ref, { stage: 'newRequest', slot: nine.slot });
+  assert.equal(await slotCount(staff.db, nine.slot), 3);
+  await ownLimit(ten.slot, 0, 0);
+  await denied(book(visitor.db, { code: 'SLOTEEEE', at: ten }));
+  await denied(ownLimit(ten.slot, 51, 0));
+
+  // Rescheduling moves the place, but not into a full or closed slot.
+  await denied(move(staff.db, c.ref, ten));
+  await ownLimit(ten.slot, null, 0);
+  await move(staff.db, c.ref, { date: ten.date, time: ten.time, slot: ten.slot });
+  assert.equal(await slotCount(staff.db, nine.slot), 2);
+  assert.equal(await slotCount(staff.db, ten.slot), 1);
+  const live = (await getDoc(doc(visitor.db, 'tracking', c.trackingId))).data();
+  assert.equal(live.time, '10:00');
 });

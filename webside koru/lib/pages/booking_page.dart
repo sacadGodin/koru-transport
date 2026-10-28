@@ -8,6 +8,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/route_map.dart';
 import '../widgets/site_layout.dart';
+import '../widgets/slot_grid.dart';
 
 // Answers already given elsewhere (homepage booking bar, airport button)
 // that the booking page fills in for the user.
@@ -24,7 +25,8 @@ class BookingDraft {
 // emergency notice next to it.
 //   Step 1: transport type
 //   Step 2: patient details and mobility needs
-//   Step 3: pickup, destination, route map, date, time and KVKK consent
+//   Step 3: pickup, destination, route map, date, a one-hour time slot
+//           (full slots cannot be picked) and KVKK consent
 class BookingPage extends StatefulWidget {
   const BookingPage({super.key});
 
@@ -53,6 +55,7 @@ class _BookingPageState extends State<BookingPage> {
   // Pickup point tapped on the map (optional).
   LatLng? _pickup;
   DateTime? _date;
+  // Start of the chosen one-hour slot, e.g. 09:00.
   TimeOfDay? _time;
   bool _consent = false;
 
@@ -135,6 +138,18 @@ class _BookingPageState extends State<BookingPage> {
         notes: _notes.text.trim(),
         pickup: _pickup,
       );
+    } on SlotFullException {
+      // Someone took the last place first. The slot list shows the slot as
+      // full now, with other free times.
+      if (!mounted) return;
+      setState(() => _sending = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(context.t(
+              'This time slot is fully booked. Please choose another '
+                  'available time.',
+              'Bu saat dilimi tamamen dolu. Lütfen başka bir müsait saat '
+                  'seçin.'))));
+      return;
     } catch (e) {
       debugPrint('Sending booking failed: $e');
       if (!mounted) return;
@@ -181,14 +196,13 @@ class _BookingPageState extends State<BookingPage> {
       firstDate: now,
       lastDate: now.add(const Duration(days: 365)),
     );
-    if (picked != null) setState(() => _date = picked);
-  }
-
-  Future<void> _pickTime() async {
-    final picked = await showTimePicker(
-        context: context,
-        initialTime: _time ?? const TimeOfDay(hour: 9, minute: 0));
-    if (picked != null) setState(() => _time = picked);
+    // Free times differ per day, so the time is chosen again.
+    if (picked != null && picked != _date) {
+      setState(() {
+        _date = picked;
+        _time = null;
+      });
+    }
   }
 
   @override
@@ -470,36 +484,32 @@ class _BookingPageState extends State<BookingPage> {
             onPickupChanged: (p) => setState(() => _pickup = p),
           ),
           const SizedBox(height: 16),
-          // Date and time side by side.
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: FieldLabel(
-                  context.t('Date', 'Tarih'),
-                  child: PickerField(
-                    value: _date == null ? null : formatDate(_date!),
-                    hint: context.t('Select', 'Seçin'),
-                    icon: Icons.calendar_today_outlined,
-                    onTap: _pickDate,
-                    errorText: _showErrors && _date == null ? mustPick : null,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FieldLabel(
-                  context.t('Time', 'Saat'),
-                  child: PickerField(
-                    value: _time == null ? null : formatTime(_time!),
-                    hint: context.t('Select', 'Seçin'),
-                    icon: Icons.schedule,
-                    onTap: _pickTime,
+          FieldLabel(
+            context.t('Date', 'Tarih'),
+            child: PickerField(
+              value: _date == null ? null : formatDate(_date!),
+              hint: context.t('Select', 'Seçin'),
+              icon: Icons.calendar_today_outlined,
+              onTap: _pickDate,
+              errorText: _showErrors && _date == null ? mustPick : null,
+            ),
+          ),
+          const SizedBox(height: 16),
+          // One-hour time slots of the chosen day, with places left.
+          FieldLabel(
+            context.t('Time', 'Saat'),
+            child: _date == null
+                ? Text(
+                    context.t('Choose a date to see the free times.',
+                        'Boş saatleri görmek için bir tarih seçin.'),
+                    style: const TextStyle(color: AppColors.muted))
+                : SlotGrid(
+                    day: _date!,
+                    selected: _time?.hour,
+                    onSelected: (hour) => setState(
+                        () => _time = TimeOfDay(hour: hour, minute: 0)),
                     errorText: _showErrors && _time == null ? mustPick : null,
                   ),
-                ),
-              ),
-            ],
           ),
           const SizedBox(height: 20),
           // KVKK privacy consent (must be ticked to send).

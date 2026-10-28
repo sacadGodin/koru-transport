@@ -1,13 +1,27 @@
 rules_version='2'
 
 // Who can do what:
-//   Visitors (not signed in): book a ride, send feedback and contact
-//   messages, read published feedback and the free bus routes, and read ONE
-//   tracking document if they know its secret id. That id is worked out
-//   from the booking reference + tracking code, so only the patient has it.
+//   Visitors (not signed in): book a ride in a time slot that has room,
+//   see how full each time slot is, send feedback and contact messages,
+//   read published feedback and the free bus routes, and read ONE tracking
+//   document if they know its secret id. That id is worked out from the
+//   booking reference + tracking code, so only the patient has it.
 //   Drivers (signed in AND listed in drivers/{uid} with active == true):
 //   read the bookings assigned to them and move the trip forward.
-//   Staff (signed in AND listed in staff/{uid}): everything else.
+//   Staff (signed in AND listed in staff/{uid}): everything else, including
+//   cancelling and rescheduling bookings and setting how many bookings a
+//   time slot takes.
+//
+// Booking stages (staff move them; the patient sees each one):
+//   newRequest -> confirmed -> reserved -> arranged (driver assigned, then
+//   the driver moves the trip: assigned -> enRoute -> arrived -> onBoard
+//   -> completed). Staff may set any stage, so a booking can be cancelled
+//   from any stage and restored as a new request.
+//
+// Time slots: one per hour, 00:00 to 23:00. slots/{day}T{hour} counts the
+// bookings that start in that hour. A new booking must add one to its slot
+// in the same write, and is refused if that would go over the slot's
+// limit; nobody but staff can lower a count or change a limit.
 //
 // There is no server code (no Cloud Functions): the website writes
 // everything itself, so these rules are what keeps the data safe. They
@@ -24,7 +38,14 @@ rules_version='2'
 //   tracking/{trackingId}  safe copy of a booking for the patient. The id
 //                          is sha256("<ref>:<code>") in hex. Written in the
 //                          same step as every change to its booking
+//                          slot (the time slot it holds a place in, null
+//                          when cancelled or made before slots existed)
 //   counters/bookings      next booking number
+//   slots/{YYYY-MM-DDTHH}  date ("YYYY-MM-DD"), count (bookings in it),
+//                          capacity (this slot's own limit, 0 = closed, or
+//                          null = the usual limit), lastRef (last booking
+//                          that took a place)
+//   settings/booking       capacity (usual bookings per slot), updatedAt
 //   messages/{id}          name, reply, topic, reference, message, date,
 //                          handled (contact form)
 //   feedback/{id}          rating, type, comment, date, name, ref, published
@@ -167,7 +188,8 @@ service cloud.firestore {
 
     function isValidBooking(b) {
       return b.ref is string
-        && b.stage in ['newRequest', 'confirmed', 'reserved', 'arranged']
+        && b.stage in ['newRequest', 'confirmed', 'reserved', 'arranged',
+                       'cancelled']
         && b.type in ['ambulance', 'wheelchair', 'standard', 'airport']
         && b.date is timestamp
         && b.time is string && b.time.size() == 5
@@ -175,7 +197,8 @@ service cloud.firestore {
         && (b.driver == null || (b.driver is string && b.driver.size() <= 200))
         && (b.get('trip', null) == null
             || b.trip in ['assigned', 'enRoute', 'arrived', 'onBoard', 'completed'])
-        && (b.get('driverLocation', null) == null || b.driverLocation is latlng);
+        && (b.get('driverLocation', null) == null || b.driverLocation is latlng)
+        && (b.get('slot', null) == null || b.slot is string);
     }
 
     // The booking form as the patient sends it: checked field by field,
@@ -184,7 +207,7 @@ service cloud.firestore {
       return b.keys().hasOnly(['ref', 'patient', 'phone', 'type', 'from',
              'branch', 'date', 'time', 'needs', 'notes', 'pickup', 'stage',
              'vehicle', 'driver', 'driverUid', 'trip', 'driverLocation',
-             'trackingId', 'createdAt'])
+             'trackingId', 'createdAt', 'slot'])
         && b.ref == ref
         && text(b.patient, 200)
         && text(b.phone, 50)
@@ -204,7 +227,37 @@ service cloud.firestore {
         && b.trip == null
         && b.driverLocation == null
         && b.trackingId is string && b.trackingId.size() == 64
-        && b.createdAt == request.time;
+        && b.createdAt == request.time
+        // The slot of the hour the ride starts in.
+        && b.slot is string
+        && b.slot.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}T' + b.time.split(':')[0]);
+    }
+
+    // Bookings per time slot when the slot has no limit of its own. Must
+    // match defaultSlotCapacity in lib/data/bookings.dart.
+    function defaultCapacity() {
+      return exists(path('settings', 'booking'))
+        ? get(path('settings', 'booking')).data.capacity
+        : 3;
+    }
+
+    // A slot's limit after this write (limits only change in staff writes).
+    function slotCapacity(id) {
+      let own = getAfter(path('slots', id)).data.get('capacity', null);
+      return own != null ? own : defaultCapacity();
+    }
+
+    function slotCount(id) {
+      return exists(path('slots', id)) ? get(path('slots', id)).data.count : 0;
+    }
+
+    // The booking [ref] takes one place in slot [id] in this same write,
+    // and the slot is not over its limit after it.
+    function takesPlace(id, ref) {
+      let after = getAfter(path('slots', id)).data;
+      return after.count == slotCount(id) + 1
+        && after.count <= slotCapacity(id)
+        && after.lastRef == ref;
     }
 
     // Every change to a booking also refreshes its tracking copy in the
@@ -229,16 +282,19 @@ service cloud.firestore {
                    : 1001) + 1
         && isNewBooking(request.resource.data, ref)
         && !exists(path('tracking', request.resource.data.trackingId))
-        && existsAfter(path('tracking', request.resource.data.trackingId));
+        && existsAfter(path('tracking', request.resource.data.trackingId))
+        && takesPlace(request.resource.data.slot, ref);
 
       allow delete: if isStaff();
 
       allow read: if isStaff()
         || (isDriver() && resource.data.get('driverUid', null) == request.auth.uid);
 
-      // Staff move bookings through the stages. They may not change the
-      // reference, the patient's own details, the tracking id or the
-      // creation time, and a driver they assign must be an active driver.
+      // Staff move bookings through the stages, cancel, restore and
+      // reschedule them (the website moves the slot places in the same
+      // write). They may not change the reference, the patient's own
+      // details, the tracking id or the creation time, and a driver they
+      // assign must be an active driver.
       allow update: if isStaff()
         && isValidBooking(request.resource.data)
         && !request.resource.data.diff(resource.data).affectedKeys()
@@ -262,6 +318,64 @@ service cloud.firestore {
         && (request.resource.data.trip == resource.data.trip
             || request.resource.data.tripUpdatedAt == request.time)
         && refreshesTracking(request.resource.data);
+    }
+
+    // How full each one-hour time slot is. No personal data, so anyone may
+    // read it (the booking form shows the places left).
+    function isSlot(id, s) {
+      return s.keys().hasOnly(['date', 'count', 'capacity', 'lastRef'])
+        && id.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}T([01][0-9]|2[0-3])')
+        && s.date == id.split('T')[0]
+        && s.count is int && s.count >= 0
+        && (s.get('capacity', null) == null
+            || (s.capacity is int && s.capacity >= 0 && s.capacity <= 50))
+        && (s.get('lastRef', null) == null || s.lastRef is string);
+    }
+
+    // One more place, taken by a new booking for this slot made in the
+    // same write, within the limit. This is the only change visitors may
+    // make, so they cannot fill a slot without real bookings.
+    function placeTakenBy(id, s, before) {
+      return s.count == before + 1
+        && s.count <= slotCapacity(id)
+        && s.lastRef is string
+        && !exists(path('bookings', s.lastRef))
+        && getAfter(path('bookings', s.lastRef)).data.slot == id;
+    }
+
+    match /slots/{id} {
+      allow read: if true;
+
+      allow create: if isSlot(id, request.resource.data)
+        && ((isStaff()
+             && (request.resource.data.count == 0
+                 || request.resource.data.count <= slotCapacity(id)))
+            || (request.resource.data.get('capacity', null) == null
+                && placeTakenBy(id, request.resource.data, 0)));
+
+      // Staff may free places and set the limit, but only fill a slot up
+      // to its limit (they raise the limit first to go over it).
+      allow update: if isSlot(id, request.resource.data)
+        && ((isStaff()
+             && (request.resource.data.count <= resource.data.count
+                 || request.resource.data.count <= slotCapacity(id)))
+            || (request.resource.data.get('capacity', null)
+                  == resource.data.get('capacity', null)
+                && placeTakenBy(id, request.resource.data, resource.data.count)));
+
+      allow delete: if false;
+    }
+
+    // Usual number of bookings per slot. Anyone may read it; staff set it.
+    match /settings/{id} {
+      allow read: if id == 'booking';
+      allow write: if isStaff()
+        && id == 'booking'
+        && request.resource.data.keys().hasOnly(['capacity', 'updatedAt'])
+        && request.resource.data.capacity is int
+        && request.resource.data.capacity >= 1
+        && request.resource.data.capacity <= 50
+        && request.resource.data.updatedAt == request.time;
     }
 
     // Contact form messages. Anyone may send one (it starts unanswered);

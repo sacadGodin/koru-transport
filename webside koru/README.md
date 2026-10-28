@@ -196,11 +196,22 @@ flowchart LR
   T2 -->|I have arrived| T3[Arrived]
   T3 -->|Patient on board| T4[To the hospital 📍]
   T4 -->|Complete trip| T5[Completed]
+  N & C & R & A -.->|Admin: Cancel| X[Cancelled]
+  X -.->|Admin: Restore| N
 ```
 
-- The **stage** (`Stage` enum in [bookings.dart](lib/data/bookings.dart)) is moved by the coordinator: `newRequest → confirmed → reserved → arranged`.
+- The **stage** (`Stage` enum in [bookings.dart](lib/data/bookings.dart)) is moved by the coordinator: `newRequest → confirmed → reserved → arranged`. From any stage the coordinator can **cancel** (frees the time slot; the patient sees "Booking cancelled") or **reschedule** (moves it to another free hour; the patient sees the new time). A cancelled booking can be **restored** as a new request if its hour still has room.
 - The **trip status** (`TripStatus` enum) is moved by the driver: `assigned → enRoute → arrived → onBoard → completed`. 📍 = location shared.
 - Every change shows up live on the patient's `/track` page and in the admin dashboard.
+- A coordinator with the dashboard open gets a pop-up for each new booking, and the side menu shows how many requests wait to be confirmed. (Email or SMS alerts would need server code; there is none.)
+
+### Time slots and capacity
+
+- Bookings are taken in **one-hour slots, 00:00 to 23:00**. The booking form shows the slots of the chosen day live, with places left; full, closed and past hours cannot be picked. Picking a full one shows *"This time slot is fully booked. Please choose another available time."* with the nearest free times that day.
+- `slots/{YYYY-MM-DD}T{HH}` counts the bookings in each hour. A new booking adds one in the same transaction, and the **rules refuse it if that goes over the limit**, so two patients can never take the last place, even with a modified browser.
+- The limit is **3 per hour** until a coordinator changes it in **Admin → Schedule** (“Bookings per hour”). One hour can get its own limit, or be closed (limit 0), from its ⋮ menu.
+- **Admin → Schedule** shows a day at a time: each hour's status (Available / Booked / Fully booked / Closed), places used out of the limit, and who booked it, when, and the booking's stage, with reschedule, cancel and call buttons.
+- Bookings made before slots existed hold no place until a coordinator saves them (confirm, reschedule…), which then takes one.
 
 ---
 
@@ -230,9 +241,11 @@ Useful helpers in [shuttles.dart](lib/data/shuttles.dart): `normalizeTime()`, `p
 
 | Collection | Document id | Holds |
 |---|---|---|
-| `bookings` | reference, e.g. `KR-1001` | Full booking: patient, phone, type, from, branch, date, time, needs, notes, pickup, stage, vehicle, driver, driverUid, trip, driverLocation, trackingId, createdAt |
+| `bookings` | reference, e.g. `KR-1001` | Full booking: patient, phone, type, from, branch, date, time, needs, notes, pickup, stage, vehicle, driver, driverUid, trip, driverLocation, trackingId, slot, createdAt |
 | `tracking` | `sha256("<reference>:<code>")` in hex | Safe copy for the patient: no name, phone or address |
 | `counters` | — | Next booking number |
+| `slots` | `YYYY-MM-DDTHH`, e.g. `2026-11-03T09` | date, count (bookings in that hour), capacity (own limit, 0 = closed, null = usual), lastRef |
+| `settings` | `booking` | capacity (usual bookings per hour), updatedAt |
 | `staff` | Auth uid | Coordinators (added by hand in the Firebase console) |
 | `drivers` | Auth uid | name, phone, vehicle, email, active |
 | `messages` | auto | Contact form messages |
@@ -249,6 +262,19 @@ Defined in [staff_auth.dart](lib/data/staff_auth.dart). Signing in with Firebase
 |---|---|---|
 | Staff | a document at `staff/{uid}` | Hand, in the Firebase console |
 | Driver | `drivers/{uid}` with `active == true` | Staff, in Admin → Drivers |
+
+What each role may do (enforced by [`../firestore.rules`](../firestore.rules)):
+
+| | Visitor / patient | Driver | Staff |
+|---|---|---|---|
+| Book a ride (in a slot with room) | ✅ | ✅ | ✅ |
+| See how full each hour is | ✅ | ✅ | ✅ |
+| Follow own booking (ref + tracking code) | ✅ | ✅ | ✅ |
+| Read bookings | — | only their assigned trips | all |
+| Move a trip forward, share location | — | own arranged trips | — |
+| Confirm, reserve, assign driver, cancel, restore, reschedule | — | — | ✅ |
+| Set bookings per hour, close an hour | — | — | ✅ |
+| Drivers, messages, feedback, free buses | send messages and feedback | — | ✅ |
 
 If the account is not on the right list, the app signs it out again and shows "not allowed". The Firestore rules check the same lists, so this cannot be bypassed from the browser.
 

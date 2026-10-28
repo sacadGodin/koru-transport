@@ -301,11 +301,14 @@ class _TrackingViewState extends State<_TrackingView> {
           Stage.reserved => 2,
           // Arranged without a trip status (older bookings).
           Stage.arranged => 3,
+          // Shown by [_cancelled] instead.
+          Stage.cancelled => 0,
         };
 
   // Card with the steps: done = blue check, current = big and blue,
   // not yet = grey. Plus the map while the driver is driving.
   Widget _progress(BuildContext context, TrackingInfo info) {
+    if (info.stage == Stage.cancelled) return _cancelled(context);
     final steps = _steps(context);
     final current = _current(info);
     return Container(
@@ -373,6 +376,55 @@ class _TrackingViewState extends State<_TrackingView> {
                 ],
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  // Card shown instead of the steps once the booking was cancelled.
+  Widget _cancelled(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(Responsive.isMobile(context) ? 20 : 32),
+      decoration: BoxDecoration(
+        color: AppColors.emergencyBg,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.event_busy_outlined,
+              size: 40, color: AppColors.emergencyText),
+          const SizedBox(height: 12),
+          Text(context.t('Booking cancelled', 'Rezervasyon iptal edildi'),
+              style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.emergencyText)),
+          const SizedBox(height: 8),
+          Text(
+              context.t(
+                  'This ride will not take place. If you still need '
+                      'transport, please book a new time or call us.',
+                  'Bu yolculuk gerçekleşmeyecek. Hâlâ ulaşıma ihtiyacınız '
+                      'varsa lütfen yeni bir saat seçin veya bizi arayın.'),
+              style: const TextStyle(height: 1.5)),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              FilledButton(
+                onPressed: () => Navigator.pushNamed(context, '/booking'),
+                child: Text(context.t('Book again', 'Yeniden rezervasyon')),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => openLink('tel:${ContactInfo.phone}'),
+                icon: const Icon(Icons.call_outlined),
+                label: Text(context.t('Call us', 'Bizi arayın')),
+              ),
+            ],
+          ),
         ],
       ),
     );
