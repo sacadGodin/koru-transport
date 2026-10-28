@@ -406,10 +406,12 @@ Hosting serves `webside koru/build/web` (see [`../firebase.json`](../firebase.js
 
 ```sh
 cd "webside koru"
-flutter build web
+flutter build web --dart-define=BUILD=$(date +%Y-%m-%d.%H%M)
 cd ..
 firebase deploy --only hosting
 ```
+
+`BUILD` is the version shown at the bottom of the admin menu, so you can tell which version a browser is running. Browsers always check for new files (`Cache-Control: no-cache` in `firebase.json`), and the app code is loaded with a `?v=` that changes every build ([web/flutter_bootstrap.js](web/flutter_bootstrap.js)), so nobody keeps an old version after a deploy.
 
 ### Going live (first time)
 

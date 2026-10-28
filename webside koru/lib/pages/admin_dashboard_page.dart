@@ -537,6 +537,16 @@ class _SideMenu extends StatelessWidget {
                   () => Navigator.pushNamedAndRemoveUntil(
                       context, '/', (_) => false)),
               const Spacer(),
+              // Which version of the site is running (set when building).
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text(
+                    '${context.t('Version', 'Sürüm')} '
+                    '${const String.fromEnvironment('BUILD', defaultValue: 'dev')}',
+                    style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.6),
+                        fontSize: 12)),
+              ),
               // Choose the language (opens a list of all languages).
               link(Icons.translate, context.lang.nativeName,
                   () => showLanguageDialog(context)),
