@@ -116,7 +116,7 @@ webside koru/
 │       ├── route_map.dart     Map with pickup, destination and driver
 │       └── color_picker.dart  Change the site's main color
 │
-├── assets/images/             Logos (and later: driver photos)
+├── assets/images/             Logos and branch photos
 ├── web/                       index.html, favicon, PWA manifest
 ├── test/                      Unit tests (flutter test)
 ├── tool/flow_check.dart       Full end-to-end check against the emulators
@@ -439,7 +439,7 @@ Bookings made before this change have no tracking copy, so patients cannot track
 | Real map points of each branch | `branchLocations` in [lib/data/bookings.dart](lib/data/bookings.dart) |
 | Branch addresses, phones, transit, parking | [contact_page.dart](lib/pages/contact_page.dart) (`_Branches`) and [home_page.dart](lib/pages/home_page.dart) (`_BranchFinder`) |
 | Hero photo | `_Hero` in [home_page.dart](lib/pages/home_page.dart) |
-| Real drivers + photos (`assets/images/driver_1.jpg`, …) | `_Drivers` in [home_page.dart](lib/pages/home_page.dart) — with the drivers' permission |
+| Real drivers (name, start year, vehicle, languages) | `_Drivers` in [home_page.dart](lib/pages/home_page.dart) — with the drivers' permission |
 | Notify coordinators of new bookings (e.g. email) | TODO in [booking_page.dart](lib/pages/booking_page.dart) |
 | Native-speaker check of FR / AR / RU | [translations.dart](lib/translations.dart) |
 

@@ -34,6 +34,14 @@ const branchLocations = {
   'Koru Hospital Kavaklıdere': LatLng(39.9700, 32.5800),
 };
 
+// Photo of each branch building in assets/images/ (branches without one
+// show a placeholder).
+const branchPhotos = {
+  'Koru Hospital Çukurambar': 'assets/images/koru_cukurambar.jpg',
+  'Koru Hospital Sincan': 'assets/images/koru_sincan.jpg',
+  'Koru Hospital Kavaklıdere': 'assets/images/koru_kavaklidere.jpg',
+};
+
 // Map point of a branch (Ankara city centre if the branch has no point yet).
 LatLng branchLocation(String branch) =>
     branchLocations[branch] ?? const LatLng(39.9334, 32.8597);

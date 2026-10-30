@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:math';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 
@@ -143,12 +145,7 @@ class _Hero extends StatelessWidget {
       ],
     );
 
-    // Replace with a real photo (Image.asset / Image.network) later.
-    final photo = PlaceholderBox(
-        context.t('[PHOTO: friendly driver helping a patient into a vehicle]',
-            '[FOTOĞRAF: hastaya araca binmesinde yardım eden güler yüzlü sürücü]'),
-        height: mobile ? 260 : 420,
-        radius: 32);
+    final photo = _HeroPhoto(height: mobile ? 360 : 520);
 
     return SectionContainer(
       top: 32,
@@ -181,6 +178,68 @@ class _Hero extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// Large hero photo that fades to a random branch photo every few seconds.
+class _HeroPhoto extends StatefulWidget {
+  const _HeroPhoto({required this.height});
+
+  final double height;
+
+  @override
+  State<_HeroPhoto> createState() => _HeroPhotoState();
+}
+
+class _HeroPhotoState extends State<_HeroPhoto> {
+  static final _photos = branchPhotos.values.toList();
+  final _random = Random();
+  late int _index = _random.nextInt(_photos.length);
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (_photos.length < 2) return;
+      // Pick a different photo than the one showing now.
+      var next = _random.nextInt(_photos.length - 1);
+      if (next >= _index) next++;
+      setState(() => _index = next);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(32),
+      child: SizedBox(
+        height: widget.height,
+        width: double.infinity,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 800),
+          // The whole photo is shown (not cropped); a blurred copy of it
+          // fills the space around it.
+          child: Stack(
+            key: ValueKey(_index),
+            fit: StackFit.expand,
+            children: [
+              ImageFiltered(
+                imageFilter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                child: Image.asset(_photos[_index], fit: BoxFit.cover),
+              ),
+              Image.asset(_photos[_index], fit: BoxFit.contain),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -908,7 +967,20 @@ class _BranchFinderState extends State<_BranchFinder> {
       ],
     );
 
-    const map = PlaceholderBox('[MAP EMBED]', height: 340);
+    // Photo of the chosen branch, or a placeholder if it has none yet.
+    final photoPath = branchPhotos[_branch];
+    final map = photoPath == null
+        ? const PlaceholderBox('[MAP EMBED]', height: 340)
+        // The whole photo is shown (not cropped), centred in the box.
+        : SizedBox(
+            height: 440,
+            child: Center(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: Image.asset(photoPath, fit: BoxFit.contain),
+              ),
+            ),
+          );
 
     return SectionContainer(
       child: Container(
@@ -923,7 +995,7 @@ class _BranchFinderState extends State<_BranchFinder> {
                 children: [
                   Expanded(flex: 2, child: details),
                   const SizedBox(width: 32),
-                  const Expanded(flex: 3, child: map),
+                  Expanded(flex: 3, child: map),
                 ],
               ),
       ),
@@ -938,7 +1010,6 @@ class _Driver {
     required this.since,
     required this.vehicle,
     required this.languages,
-    required this.photo,
   });
 
   final String name;
@@ -947,42 +1018,36 @@ class _Driver {
   // Vehicle they usually drive.
   final TransportType vehicle;
   final String languages;
-  // Photo file in assets/images/ (a placeholder shows until it exists).
-  final String photo;
 }
 
-// "Our drivers": a card for each Koru Hospital driver with photo, name,
-// years with Koru, vehicle and languages.
+// "Our drivers": a card for each Koru Hospital driver with name, years
+// with Koru, vehicle and languages.
 class _Drivers extends StatelessWidget {
   const _Drivers({super.key});
 
   // TODO: replace the placeholders with the real drivers (with their
-  // permission) and save their photos as assets/images/driver_1.jpg, ...
+  // permission).
   static const _drivers = [
     _Driver(
         name: '[DRIVER 1]',
         since: '[YEAR]',
         vehicle: TransportType.ambulance,
-        languages: '[TR, EN]',
-        photo: 'assets/images/driver_1.jpg'),
+        languages: '[TR, EN]'),
     _Driver(
         name: '[DRIVER 2]',
         since: '[YEAR]',
         vehicle: TransportType.wheelchair,
-        languages: '[TR, EN]',
-        photo: 'assets/images/driver_2.jpg'),
+        languages: '[TR, EN]'),
     _Driver(
         name: '[DRIVER 3]',
         since: '[YEAR]',
         vehicle: TransportType.airport,
-        languages: '[TR, EN]',
-        photo: 'assets/images/driver_3.jpg'),
+        languages: '[TR, EN]'),
     _Driver(
         name: '[DRIVER 4]',
         since: '[YEAR]',
         vehicle: TransportType.standard,
-        languages: '[TR, EN]',
-        photo: 'assets/images/driver_4.jpg'),
+        languages: '[TR, EN]'),
   ];
 
   @override
@@ -1019,7 +1084,7 @@ class _Drivers extends StatelessWidget {
             children: [
               for (final d in _drivers)
                 Container(
-                  clipBehavior: Clip.antiAlias,
+                  padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     border: Border.all(color: AppColors.border),
@@ -1028,33 +1093,15 @@ class _Drivers extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Image.asset(
-                        d.photo,
-                        height: 240,
-                        width: double.infinity,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => PlaceholderBox(
-                            context.t('[DRIVER PHOTO]', '[SÜRÜCÜ FOTOĞRAFI]'),
-                            height: 240,
-                            radius: 0),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(d.name,
-                                style: const TextStyle(
-                                    fontSize: 18, fontWeight: FontWeight.w800)),
-                            detail(
-                                Icons.badge_outlined,
-                                context.t('With Koru since ${d.since}',
-                                    '${d.since} yılından beri Koru\'da')),
-                            detail(d.vehicle.icon, d.vehicle.label(context)),
-                            detail(Icons.translate, d.languages),
-                          ],
-                        ),
-                      ),
+                      Text(d.name,
+                          style: const TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.w800)),
+                      detail(
+                          Icons.badge_outlined,
+                          context.t('With Koru since ${d.since}',
+                              '${d.since} yılından beri Koru\'da')),
+                      detail(d.vehicle.icon, d.vehicle.label(context)),
+                      detail(Icons.translate, d.languages),
                     ],
                   ),
                 ),

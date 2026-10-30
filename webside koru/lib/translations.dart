@@ -565,6 +565,80 @@ const translations = <String, Map<Lang, String>>{
     Lang.ru: "Наши координаторы отвечают 24/7."
   },
   "Phone": {Lang.fr: "Téléphone", Lang.ar: "الهاتف", Lang.ru: "Телефон"},
+  "Koru Hospital — three locations in Ankara": {
+    Lang.fr: "Koru Hospital — trois sites à Ankara",
+    Lang.ar: "مستشفى كورو — ثلاثة مواقع في أنقرة",
+    Lang.ru: "Больница Koru — три филиала в Анкаре"
+  },
+  "Koru Hospital is a healthcare institution in Ankara, Türkiye, associated with the vision and expertise of two doctors: Dr. Hassan Berri, a urologist, and Dr. Aydın Berri, a gynecologist.":
+      {
+    Lang.fr:
+        "Koru Hospital est un établissement de santé à Ankara, en Turquie, porté par la vision et l'expertise de deux médecins : le Dr Hassan Berri, urologue, et le Dr Aydın Berri, gynécologue.",
+    Lang.ar:
+        "مستشفى كورو مؤسسة صحية في أنقرة، تركيا، ترتبط برؤية وخبرة طبيبين: الدكتور حسن بيري، أخصائي المسالك البولية، والدكتور آيدن بيري، أخصائي أمراض النساء.",
+    Lang.ru:
+        "Больница Koru — медицинское учреждение в Анкаре (Турция), связанное с видением и опытом двух врачей: д-ра Хасана Берри, уролога, и д-ра Айдына Берри, гинеколога."
+  },
+  "Today, Koru Hospital serves patients across three locations in Ankara, providing access to medical services and supporting patients throughout their healthcare journey.":
+      {
+    Lang.fr:
+        "Aujourd'hui, Koru Hospital accueille les patients sur trois sites à Ankara, donne accès aux soins médicaux et accompagne les patients tout au long de leur parcours de santé.",
+    Lang.ar:
+        "يخدم مستشفى كورو اليوم المرضى في ثلاثة مواقع في أنقرة، ويوفر الوصول إلى الخدمات الطبية ويدعم المرضى طوال رحلتهم العلاجية.",
+    Lang.ru:
+        "Сегодня больница Koru принимает пациентов в трёх филиалах в Анкаре, обеспечивая доступ к медицинским услугам и поддерживая пациентов на всём пути лечения."
+  },
+  "Main hospital": {
+    Lang.fr: "Hôpital principal",
+    Lang.ar: "المستشفى الرئيسي",
+    Lang.ru: "Главная больница"
+  },
+  "The main hospital location, offering a range of medical specialties and services. It serves as the primary destination for patients seeking medical care through the Koru network.":
+      {
+    Lang.fr:
+        "Le site principal, qui propose un large éventail de spécialités et de services médicaux. C'est la destination principale des patients qui se font soigner dans le réseau Koru.",
+    Lang.ar:
+        "الموقع الرئيسي للمستشفى، ويقدم مجموعة من التخصصات والخدمات الطبية. وهو الوجهة الأساسية للمرضى الباحثين عن الرعاية الطبية عبر شبكة كورو.",
+    Lang.ru:
+        "Главный филиал с широким выбором медицинских специальностей и услуг. Основное место, куда обращаются пациенты сети Koru."
+  },
+  "The Sincan location extends access to Koru Hospital's healthcare services, serving patients in the Sincan area and surrounding communities.":
+      {
+    Lang.fr:
+        "Le site de Sincan étend l'accès aux soins de Koru Hospital aux patients de Sincan et des environs.",
+    Lang.ar:
+        "يوسّع موقع سنجان نطاق الوصول إلى خدمات مستشفى كورو الصحية، ويخدم المرضى في منطقة سنجان والمناطق المحيطة بها.",
+    Lang.ru:
+        "Филиал в Синджане делает услуги больницы Koru доступнее для пациентов Синджана и соседних районов."
+  },
+  "The Kavaklıdere location provides another point of access for patients seeking healthcare services in Ankara.":
+      {
+    Lang.fr:
+        "Le site de Kavaklıdere offre un autre point d'accès aux patients qui cherchent des soins à Ankara.",
+    Lang.ar:
+        "يوفر موقع كافاكليدره نقطة وصول أخرى للمرضى الباحثين عن خدمات الرعاية الصحية في أنقرة.",
+    Lang.ru:
+        "Филиал в Каваклыдере — ещё одно место, где пациенты могут получить медицинскую помощь в Анкаре."
+  },
+  "Koru Transport — connecting patients to care": {
+    Lang.fr: "Koru Transport — relier les patients aux soins",
+    Lang.ar: "كورو للنقل — نوصل المرضى إلى الرعاية",
+    Lang.ru: "Koru Transport — путь пациента к лечению"
+  },
+  "Koru Transport helps patients travel conveniently between Ankara Airport, Koru Hospital's three locations, hotels, and other destinations. Our goal is to make every journey comfortable, reliable, and stress-free.":
+      {
+    Lang.fr:
+        "Koru Transport aide les patients à se déplacer facilement entre l'aéroport d'Ankara, les trois sites de Koru Hospital, les hôtels et d'autres destinations. Notre objectif : des trajets confortables, fiables et sans stress.",
+    Lang.ar:
+        "تساعد كورو للنقل المرضى على التنقل بسهولة بين مطار أنقرة ومواقع مستشفى كورو الثلاثة والفنادق ووجهات أخرى. هدفنا أن تكون كل رحلة مريحة وموثوقة وخالية من التوتر.",
+    Lang.ru:
+        "Koru Transport помогает пациентам удобно добираться между аэропортом Анкары, тремя филиалами больницы Koru, гостиницами и другими местами. Наша цель — сделать каждую поездку комфортной, надёжной и спокойной."
+  },
+  "Three locations. One commitment: patient care.": {
+    Lang.fr: "Trois sites. Un seul engagement : le soin des patients.",
+    Lang.ar: "ثلاثة مواقع. التزام واحد: رعاية المرضى.",
+    Lang.ru: "Три филиала. Одна цель — забота о пациентах."
+  },
   "Message sent. We will reply soon.": {
     Lang.fr: "Message envoyé. Nous vous répondrons bientôt.",
     Lang.ar: "تم إرسال الرسالة. سنرد عليك قريبًا.",

@@ -55,6 +55,7 @@ class ContactPage extends StatelessWidget {
             ],
           ),
         ),
+        const SectionContainer(top: 48, bottom: 48, child: _About()),
         // Form on the left, branches on the right (stacked on small screens).
         SectionContainer(
           top: 8,
@@ -130,6 +131,227 @@ class _ChannelCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// About Koru Hospital: who founded it, a card for each of the three
+// locations, and what Koru Transport does.
+class _About extends StatelessWidget {
+  const _About();
+
+  @override
+  Widget build(BuildContext context) {
+    // Branch name, optional tag and short description of each location.
+    final locations = [
+      (
+        'Koru Hospital Çukurambar',
+        context.t('Main hospital', 'Ana hastane'),
+        context.t(
+            'The main hospital location, offering a range of medical '
+                'specialties and services. It serves as the primary '
+                'destination for patients seeking medical care through the '
+                'Koru network.',
+            'Çeşitli tıbbi branş ve hizmetler sunan ana hastane. Koru ağı '
+                'üzerinden tedavi arayan hastalar için ilk adrestir.'),
+      ),
+      (
+        'Koru Hospital Sincan',
+        null,
+        context.t(
+            "The Sincan location extends access to Koru Hospital's "
+                'healthcare services, serving patients in the Sincan area and '
+                'surrounding communities.',
+            "Sincan lokasyonu, Koru Hastanesi'nin sağlık hizmetlerini Sincan "
+                've çevresindeki hastalara ulaştırır.'),
+      ),
+      (
+        'Koru Hospital Kavaklıdere',
+        null,
+        context.t(
+            'The Kavaklıdere location provides another point of access for '
+                'patients seeking healthcare services in Ankara.',
+            "Kavaklıdere lokasyonu, Ankara'da sağlık hizmeti arayan hastalar "
+                'için bir başka erişim noktasıdır.'),
+      ),
+    ];
+
+    const body = TextStyle(fontSize: 17, height: 1.6, color: AppColors.muted);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SectionHeading(context.t('Koru Hospital — three locations in Ankara',
+            "Koru Hastanesi — Ankara'da üç lokasyon")),
+        const SizedBox(height: 16),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 820),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                  context.t(
+                      'Koru Hospital is a healthcare institution in Ankara, '
+                          'Türkiye, associated with the vision and expertise '
+                          'of two doctors: Dr. Hassan Berri, a urologist, and Dr. '
+                          'Aydın Berri, a gynecologist.',
+                      "Koru Hastanesi, Ankara'da iki doktorun vizyonu ve "
+                          'uzmanlığıyla anılan bir sağlık kuruluşudur: üroloji '
+                          'uzmanı Dr. Hassan Berri ve kadın hastalıkları ve doğum '
+                          'uzmanı Dr. Aydın Berri.'),
+                  style: body),
+              const SizedBox(height: 12),
+              Text(
+                  context.t(
+                      'Today, Koru Hospital serves patients across three '
+                          'locations in Ankara, providing access to medical '
+                          'services and supporting patients throughout their '
+                          'healthcare journey.',
+                      "Bugün Koru Hastanesi, Ankara'daki üç lokasyonunda "
+                          'hastalara hizmet veriyor; tıbbi hizmetlere erişim '
+                          'sağlıyor ve hastaları sağlık yolculukları boyunca '
+                          'destekliyor.'),
+                  style: body),
+            ],
+          ),
+        ),
+        const SizedBox(height: 32),
+        ResponsiveGrid(
+          children: [
+            for (final (i, (branch, tag, text)) in locations.indexed)
+              _LocationCard(
+                  number: i + 1, branch: branch, tag: tag, text: text),
+          ],
+        ),
+        const SizedBox(height: 32),
+        // Koru Transport in a light blue box, with the tagline at the end.
+        Container(
+          width: double.infinity,
+          padding: EdgeInsets.all(Responsive.isMobile(context) ? 24 : 40),
+          decoration: BoxDecoration(
+            color: AppColors.blueSoft,
+            borderRadius: BorderRadius.circular(AppRadius.card),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                  context.t('Koru Transport — connecting patients to care',
+                      'Koru Transport — hastaları sağlığa bağlıyor'),
+                  style: const TextStyle(
+                      fontSize: 24, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 12),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 820),
+                child: Text(
+                    context.t(
+                        'Koru Transport helps patients travel conveniently '
+                            "between Ankara Airport, Koru Hospital's three "
+                            'locations, hotels, and other destinations. Our '
+                            'goal is to make every journey comfortable, '
+                            'reliable, and stress-free.',
+                        'Koru Transport, hastaların Ankara Havalimanı, Koru '
+                            "Hastanesi'nin üç lokasyonu, oteller ve diğer "
+                            'noktalar arasında rahatça seyahat etmesini '
+                            'sağlar. Amacımız her yolculuğu konforlu, '
+                            'güvenilir ve stressiz kılmak.'),
+                    style: body),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                  context.t('Three locations. One commitment: patient care.',
+                      'Üç lokasyon. Tek bir taahhüt: hasta bakımı.'),
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.blue)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// One location: photo, number, branch name, optional tag and description.
+class _LocationCard extends StatelessWidget {
+  const _LocationCard({
+    required this.number,
+    required this.branch,
+    required this.tag,
+    required this.text,
+  });
+
+  final int number;
+  final String branch;
+  final String? tag;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final photo = branchPhotos[branch];
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(AppRadius.card),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // The photos are portrait, so a 4:5 frame crops very little.
+          AspectRatio(
+            aspectRatio: 4 / 5,
+            child: photo == null
+                ? const PlaceholderBox('[PHOTO]', height: double.infinity)
+                : Image.asset(photo, fit: BoxFit.cover),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    // Number in a blue circle.
+                    CircleAvatar(
+                      radius: 14,
+                      backgroundColor: AppColors.blue,
+                      child: Text('$number',
+                          style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white)),
+                    ),
+                    const SizedBox(width: 10),
+                    if (tag != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppColors.blueSoft,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(tag!,
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.blue)),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(branch,
+                    style: const TextStyle(
+                        fontSize: 20, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 8),
+                Text(text,
+                    style: const TextStyle(
+                        fontSize: 15, height: 1.6, color: AppColors.muted)),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
