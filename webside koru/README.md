@@ -6,8 +6,8 @@ One app serves four kinds of people:
 
 | Who | Where | What they do |
 |---|---|---|
-| **Patients / visitors** | `/`, `/booking`, `/track`, `/contact`, `/feedback` | Book a ride, follow it live, send a message, rate the ride, see free bus times. |
-| **Coordinators (staff)** | `/admin/login` → `/admin` | Confirm → reserve → assign a driver. Manage drivers, messages, feedback and free buses. |
+| **Patients / visitors** | `/`, `/booking`, `/track`, `/contact`, `/feedback` | Book a ride, follow it live, send a message, rate the ride. |
+| **Coordinators (staff)** | `/admin/login` → `/admin` | Confirm → reserve → assign a driver. Manage drivers, messages and feedback. |
 | **Drivers** | `/driver/login` → `/driver` | See only their own trips, move each trip forward, share their location while driving. |
 
 The backend lives next to this folder: the security rules in [`../firestore.rules`](../firestore.rules) and their tests in [`../firebase-tests/`](../firebase-tests/).
@@ -65,7 +65,7 @@ flutter run -d chrome --dart-define=USE_EMULATORS=true
 | `flutter` (Web, Material 3) | The whole UI |
 | `firebase_core` | Connecting to the Firebase project `project-transportation-5b6d8` |
 | `firebase_auth` | Email + password sign-in for staff and drivers |
-| `cloud_firestore` | Live data: bookings, drivers, messages, feedback, free buses, tracking |
+| `cloud_firestore` | Live data: bookings, drivers, messages, feedback, tracking |
 | `crypto` | Turns the booking reference + tracking code into the tracking id (SHA-256) |
 | `flutter_map` + `latlong2` | OpenStreetMap maps (route map, driver's car). No API key needed |
 | `geolocator` | Driver's live location while driving |
@@ -95,7 +95,6 @@ webside koru/
 │   │   ├── drivers.dart       Driver model + DriverStore (admin only)
 │   │   ├── feedback.dart      Patient comments + FeedbackStore
 │   │   ├── messages.dart      Contact form messages + MessageStore
-│   │   ├── shuttles.dart      Free bus routes, time parsing, next departure
 │   │   ├── staff_auth.dart    Staff / driver sign-in (StaffAuth)
 │   │   └── tracking.dart      Patient lookup + live tracking
 │   │
@@ -145,7 +144,7 @@ webside koru/
 
 | Route | File | What is on it |
 |---|---|---|
-| `/` | [home_page.dart](lib/pages/home_page.dart) | Hero with a quick **booking bar** (service, from, to, date) → services cards → **next free buses** (live, refreshed every 30 s, Ankara time) → published patient comments → branch finder → "Our drivers". Menu links like *Shuttle* and *Directions* scroll to these parts. |
+| `/` | [home_page.dart](lib/pages/home_page.dart) | Hero with a quick **booking bar** (service, from, to, date) → services cards → published patient comments → branch finder → "Our drivers". Menu links like *Directions* and *Our drivers* scroll to these parts. |
 | `/booking` | [booking_page.dart](lib/pages/booking_page.dart) | 3-step form: **1** transport type, **2** patient name, phone, mobility needs (wheelchair, stretcher, oxygen, companion), notes, **3** pickup address, destination branch, tap-to-set pickup on the map, date, time, KVKK consent. A summary and an "Emergency? Call 112" box sit next to the form. After sending, shows the reference (`KR-1001`) and the secret 8-letter tracking code. Can be pre-filled from the homepage via `BookingDraft`. |
 | `/track` | [track_page.dart](lib/pages/track_page.dart) | Patient types reference + code. Then shows live progress steps, booking details, driver's first name and plate, and the car on the map while driving. The browser remembers the booking, so a refresh keeps it open. |
 | `/contact` | [contact_page.dart](lib/pages/contact_page.dart) | Phone / WhatsApp / email cards, a contact form (saved to `messages`), and the branch list. |
@@ -170,7 +169,6 @@ A side menu (a drawer on small screens) switches between sections:
 - **Drivers** — add (email + first password), edit (empty password keeps the old one), delete, and switch accounts on/off. A switched-off driver cannot sign in or see any booking.
 - **Messages** — contact form messages, newest first; mark as answered or delete. The menu shows how many are unanswered.
 - **Feedback** — average rating, every comment, show/hide on the homepage, delete.
-- **Free buses** — for each route (A Çukurambar, B Sincan, C Kavaklıdere): destination, departure times (typed like `08:00, 9:30 12:00`) and frequency in minutes.
 
 The side menu also has the language switch, the color picker and sign-out.
 
@@ -217,7 +215,7 @@ flowchart LR
 
 ## Data layer (`lib/data/`)
 
-Each file holds a model plus a **store**: a `ChangeNotifier` that listens to a Firestore collection and calls `notifyListeners()` when anything changes. There is **one global instance** of each (`bookingStore`, `driverStore`, `feedbackStore`, `messageStore`, `shuttleStore`, `staffAuth`, `tracking`). Pages listen to them with `ListenableBuilder`.
+Each file holds a model plus a **store**: a `ChangeNotifier` that listens to a Firestore collection and calls `notifyListeners()` when anything changes. There is **one global instance** of each (`bookingStore`, `driverStore`, `feedbackStore`, `messageStore`, `staffAuth`, `tracking`). Pages listen to them with `ListenableBuilder`.
 
 Stores that hold private data listen to `staffAuth`: when someone signs in or out, they cancel the old Firestore listener, clear their list and start the right query.
 
@@ -227,13 +225,10 @@ Stores that hold private data listen to `staffAuth`: when someone signs in or ou
 | `driverStore` | `drivers` | Staff only, sorted by name. | `add()` creates the sign-in account through a second Firebase app (so the coordinator stays signed in), then the profile. `edit()` (name, phone, vehicle), `sendPasswordReset()`, `delete()` (profile only), `setActive()`. |
 | `feedbackStore` | `feedback` | Staff: all. Visitors: only `published == true`. | `add()` (anyone), `setPublished()`, `remove()` (staff). |
 | `messageStore` | `messages` | Staff only. | `send()` (anyone), `setHandled()`, `remove()` (staff). |
-| `shuttleStore` | `shuttleRoutes` | Everyone. | `save()` (staff). Bad values in the database are ignored so they never show on the homepage. |
 | `tracking` | `tracking/{token}` | Whoever holds the token. | `lookup()` works out the id from reference + code and reads it. Token kept in `shared_preferences`. |
 | `staffAuth` | `staff`, `drivers` | — | `signIn()`, `signOut()`, `sendPasswordReset()`. |
 
 Useful helpers in [bookings.dart](lib/data/bookings.dart): `ContactInfo` (phone, WhatsApp, email, address), `branches`, `branchLocations`, `formatDate()` (`25.10.2026`), `formatTime()` (`09:30`), `trackingIdFor()` (reference + code → tracking id).
-
-Useful helpers in [shuttles.dart](lib/data/shuttles.dart): `normalizeTime()`, `parseTimes()`, `ankaraNow()` (Turkey is UTC+3 all year), `nextDeparture()`.
 
 ---
 
@@ -250,18 +245,20 @@ Useful helpers in [shuttles.dart](lib/data/shuttles.dart): `normalizeTime()`, `p
 | `drivers` | Auth uid | name, phone, vehicle, email, active |
 | `messages` | auto | Contact form messages |
 | `feedback` | auto | Patient comments |
-| `shuttleRoutes` | `A`, `B`, `C` | destination, times, frequency, updatedAt |
 
 ---
 
 ## Sign-in and roles
 
-Defined in [staff_auth.dart](lib/data/staff_auth.dart). Signing in with Firebase Auth is **not enough** — the account must also be on a list:
+Defined in [staff_auth.dart](lib/data/staff_auth.dart). Every page needs a sign-in; the sign-in page (`/`) has three tabs. Signing in with Firebase Auth is **not enough** — the account must also be on a list:
 
-| Role | Needs | Added by |
-|---|---|---|
-| Staff | a document at `staff/{uid}` | Hand, in the Firebase console |
-| Driver | `drivers/{uid}` with `active == true` | Staff, in Admin → Drivers |
+| Tab | Needs | Opens | Added by |
+|---|---|---|---|
+| Staff | `staff/{uid}` (any role) | the main site (`/home`): book rides, see information | Firebase console (see below) |
+| Admin | `staff/{uid}` with `role: "admin"` (or no role) | the admin dashboard | Firebase console (see below) |
+| Driver | `drivers/{uid}` with `active == true` | the driver dashboard | Admin → Drivers |
+
+The tab decides: an admin account signed in with the Staff tab only gets the main site (remembered in the browser, so it stays that way after a refresh).
 
 What each role may do (enforced by [`../firestore.rules`](../firestore.rules)):
 
@@ -274,11 +271,14 @@ What each role may do (enforced by [`../firestore.rules`](../firestore.rules)):
 | Move a trip forward, share location | — | own arranged trips | — |
 | Confirm, reserve, assign driver, cancel, restore, reschedule | — | — | ✅ |
 | Set bookings per hour, close an hour | — | — | ✅ |
-| Drivers, messages, feedback, free buses | send messages and feedback | — | ✅ |
+| Drivers, messages, feedback | send messages and feedback | — | ✅ |
+| Add, change and remove staff accounts | — | — | admins only, never their own |
 
 If the account is not on the right list, the app signs it out again and shows "not allowed". The Firestore rules check the same lists, so this cannot be bypassed from the browser.
 
-**Adding the first coordinator:** create the user in *Firebase console → Authentication*, copy its UID, then create a document `staff/<UID>` in Firestore (any fields, e.g. `name`).
+**Adding the first admin:** create the user in *Firebase console → Authentication*, copy its UID, then create a document `staff/<UID>` in Firestore (no `role` field, or `role: "admin"`). Add every other staff member or admin the same way (`role: "staff"` for staff).
+
+**Staff vs admin in the rules:** the rules let every account on the staff list manage bookings, drivers, messages and feedback; only managing staff accounts is limited to admins. Keeping staff out of the rest of the dashboard is done by the website.
 
 ---
 
@@ -393,8 +393,7 @@ cd "../webside koru" && flutter test
 | Test | Checks |
 |---|---|
 | [test/lang_test.dart](test/lang_test.dart) | Translations, `{}` values, English fallback |
-| [test/shuttles_test.dart](test/shuttles_test.dart) | Time parsing and next free bus |
-| [tool/flow_check.dart](tool/flow_check.dart) | Full flow through the real app code against emulators: patient books → looks up → tracks; coordinator adds driver, confirms, reserves, assigns; driver drives to completed; free bus routes. Prints `FLOW OK` or `FLOW FAILED`. Run with `npm run test:app`. |
+| [tool/flow_check.dart](tool/flow_check.dart) | Full flow through the real app code against emulators: patient books → looks up → tracks; coordinator adds driver, confirms, reserves, assigns; driver drives to completed. Prints `FLOW OK` or `FLOW FAILED`. Run with `npm run test:app`. |
 
 Also run `flutter analyze` before pushing.
 
@@ -423,7 +422,6 @@ firebase deploy --only hosting
    ```
 3. Add the first coordinator (see [Sign-in and roles](#sign-in-and-roles)).
 4. In the admin dashboard, open **Drivers** and add each driver (email + first password).
-5. Open **Free buses** and set each route's destination, departure times and frequency. Until a route has a destination and at least one time, the homepage shows "Schedule to be announced".
 
 Bookings made before this change have no tracking copy, so patients cannot track them. They still work in the admin dashboard.
 
@@ -455,7 +453,7 @@ Search the code for `TODO` and `[` placeholders like `[PHONE]` to find them all.
 3. To show it in the top menu, add a value to `NavItem` (with its label) and handle it in `openNavItem()` in [site_layout.dart](lib/widgets/site_layout.dart).
 
 **Add a hospital branch**
-Add it to `branches` and `branchLocations` in [bookings.dart](lib/data/bookings.dart). For a free bus route, also add a value to `ShuttleBranch` in [shuttles.dart](lib/data/shuttles.dart).
+Add it to `branches` and `branchLocations` in [bookings.dart](lib/data/bookings.dart).
 
 **Add a transport type or mobility need**
 Add the value to `TransportType` / `MobilityNeed` in [bookings.dart](lib/data/bookings.dart), give it a label (and icon), add translations, and allow it in `isNewBooking` / `isValidBooking` in [`../firestore.rules`](../firestore.rules).

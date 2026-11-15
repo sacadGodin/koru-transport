@@ -85,7 +85,8 @@ const form = {
   branch: 'Koru Hospital Çukurambar',
   date: Timestamp.fromMillis(Date.UTC(2026, 10, 3)),
   time: '09:30',
-  needs: ['wheelchair', 'companion'],
+  needs: ['wheelchair', 'companion', 'luggage'],
+  passengers: 2,
   notes: 'Third floor, no lift.',
   pickup: new GeoPoint(39.92, 32.85),
 };
@@ -208,6 +209,9 @@ test('full flow: patient booking to completed trip', async (t) => {
     await fake((w) => ({ ...w, booking: { ...w.booking, patient: ' ' } }));
     await fake((w) => ({ ...w, booking: { ...w.booking, time: '25:00' } }));
     await fake((w) => ({ ...w, booking: { ...w.booking, needs: ['jetpack'] } }));
+    await fake((w) => ({ ...w, booking: { ...w.booking, passengers: 0 } }));
+    await fake((w) => ({ ...w, booking: { ...w.booking, passengers: 9 } }));
+    await fake((w) => ({ ...w, booking: { ...w.booking, passengers: '2' } }));
     await fake((w) => ({ ...w, booking: { ...w.booking, extra: 1 } }));
     // Starting further along, or with a driver already set.
     await fake((w) => ({ ...w, booking: { ...w.booking, stage: 'arranged' } }));
@@ -248,7 +252,7 @@ test('full flow: patient booking to completed trip', async (t) => {
   assert.equal(live.ref, 'KR-1001');
   assert.equal(live.stage, 'newRequest');
   assert.equal(live.type, 'wheelchair');
-  for (const secret of ['patient', 'phone', 'from', 'notes', 'pickup', 'needs']) {
+  for (const secret of ['patient', 'phone', 'from', 'notes', 'pickup', 'needs', 'passengers']) {
     assert.equal(secret in live, false, `${secret} must not be in tracking`);
   }
   const wrong = await getDoc(doc(patient.db, 'tracking', trackingIdFor('KR-1001', 'AAAA2222')));
@@ -379,36 +383,6 @@ test('contact messages: visitors send, only staff read', async () => {
   await denied(updateDoc(doc(staff.db, 'messages', sent.id), { message: 'edited' }));
 });
 
-test('free bus routes: everyone reads, only staff set them', async () => {
-  await addStaff('buses@koru.test', 'staff-pass-789');
-  const visitor = browser('busVisitor');
-  const staff = browser('busStaff');
-  const route = {
-    destination: 'Test stop', times: ['08:00', '08:30'], frequency: 30,
-    updatedAt: serverTimestamp(),
-  };
-
-  // Nothing set yet: the homepage shows "Schedule to be announced".
-  assert.equal((await getDocs(collection(visitor.db, 'shuttleRoutes'))).size, 0);
-  await denied(setDoc(doc(visitor.db, 'shuttleRoutes', 'A'), route));
-
-  await staff.signIn('buses@koru.test', 'staff-pass-789');
-  await setDoc(doc(staff.db, 'shuttleRoutes', 'A'), route);
-  await setDoc(doc(staff.db, 'shuttleRoutes', 'B'), { ...route, frequency: null });
-  await denied(setDoc(doc(staff.db, 'shuttleRoutes', 'D'), route));
-  await denied(setDoc(doc(staff.db, 'shuttleRoutes', 'A'), { ...route, frequency: 0 }));
-  await denied(setDoc(doc(staff.db, 'shuttleRoutes', 'A'), { ...route, frequency: '30' }));
-  await denied(setDoc(doc(staff.db, 'shuttleRoutes', 'A'), { ...route, times: '08:00' }));
-  await denied(setDoc(doc(staff.db, 'shuttleRoutes', 'A'), { ...route, extra: 1 }));
-  await denied(setDoc(doc(staff.db, 'shuttleRoutes', 'A'),
-      { ...route, destination: 'x'.repeat(201) }));
-
-  const seen = await getDoc(doc(visitor.db, 'shuttleRoutes', 'A'));
-  assert.equal(seen.get('destination'), 'Test stop');
-  assert.deepEqual(seen.get('times'), ['08:00', '08:30']);
-  await denied(updateDoc(doc(visitor.db, 'shuttleRoutes', 'A'), { destination: 'Hacked' }));
-});
-
 test('staff edit and delete drivers', async () => {
   await addStaff('fleet@koru.test', 'staff-pass-321');
   const staff = browser('fleetStaff');
@@ -436,6 +410,61 @@ test('staff edit and delete drivers', async () => {
   assert.equal((await getDoc(profile)).exists(), false);
   await denied(getDocs(query(collection(driver.db, 'bookings'),
       where('driverUid', '==', uid))));
+});
+
+// Adds a staff or admin account like the dashboard's Accounts section.
+async function addAccount(admin, name, email, password, role) {
+  const signUp = browser(`signup-${email}`);
+  const { user } = await createUserWithEmailAndPassword(signUp.auth, email, password);
+  await signOut(signUp.auth);
+  await setDoc(doc(admin.db, 'staff', user.uid), {
+    name, email, role, createdAt: serverTimestamp(),
+  });
+  return user.uid;
+}
+
+test('admins manage staff accounts; staff cannot', async () => {
+  // Made by hand in the console, no role: counts as an admin.
+  const adminUser = await addStaff('boss@koru.test', 'admin-pass-111');
+  const admin = browser('accountsAdmin');
+  const helper = browser('accountsStaff');
+  await admin.signIn('boss@koru.test', 'admin-pass-111');
+
+  const staffUid = await addAccount(admin, 'Ayşe', 'ayse@koru.test', 'staff-pass-777', 'staff');
+  assert.equal(admin.auth.currentUser.uid, adminUser.uid, 'admin stays signed in');
+  const list = await getDocs(collection(admin.db, 'staff'));
+  assert.ok(list.docs.some((d) => d.id === staffUid), 'admins see the list');
+
+  // Bad profiles are refused.
+  const extra = browser('accountsExtra');
+  const { user: other } = await createUserWithEmailAndPassword(
+      extra.auth, 'other@koru.test', 'other-pass-1');
+  await denied(setDoc(doc(admin.db, 'staff', other.uid), {
+    name: 'X', email: 'other@koru.test', role: 'owner', createdAt: serverTimestamp(),
+  }));
+  await denied(setDoc(doc(admin.db, 'staff', other.uid), {
+    name: '', email: 'other@koru.test', role: 'staff', createdAt: serverTimestamp(),
+  }));
+
+  // Staff (role "staff") can read only themselves and change nothing.
+  await helper.signIn('ayse@koru.test', 'staff-pass-777');
+  assert.equal((await getDoc(doc(helper.db, 'staff', staffUid))).get('role'), 'staff');
+  await denied(getDocs(collection(helper.db, 'staff')));
+  await denied(updateDoc(doc(helper.db, 'staff', staffUid), { role: 'admin' }));
+  await denied(setDoc(doc(helper.db, 'staff', other.uid), {
+    name: 'X', email: 'other@koru.test', role: 'staff', createdAt: serverTimestamp(),
+  }));
+  await denied(deleteDoc(doc(helper.db, 'staff', adminUser.uid)));
+
+  // Admins change a role or name but never the email, nor their own entry.
+  await updateDoc(doc(admin.db, 'staff', staffUid), { name: 'Ayşe Kaya', role: 'admin' });
+  await denied(updateDoc(doc(admin.db, 'staff', staffUid), { email: 'x@koru.test' }));
+  await denied(updateDoc(doc(admin.db, 'staff', adminUser.uid), { role: 'staff' }));
+  await denied(deleteDoc(doc(admin.db, 'staff', adminUser.uid)));
+
+  // Removing an account takes it off the list.
+  await deleteDoc(doc(admin.db, 'staff', staffUid));
+  assert.equal((await getDoc(doc(admin.db, 'staff', staffUid))).exists(), false);
 });
 
 test('time slots: a full hour takes no more bookings', async () => {

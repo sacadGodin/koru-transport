@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -18,6 +20,8 @@ class RouteMap extends StatefulWidget {
     this.onPickupChanged,
     this.driver,
     this.height = 320,
+    this.destinationIcon = Icons.local_hospital,
+    this.pickupIcon = Icons.location_on,
   });
 
   final LatLng destination;
@@ -27,6 +31,9 @@ class RouteMap extends StatefulWidget {
   // Live driver position (null = not shown).
   final LatLng? driver;
   final double height;
+  // Pin icons: e.g. a hotel or a plane instead of the hospital.
+  final IconData destinationIcon;
+  final IconData pickupIcon;
 
   @override
   State<RouteMap> createState() => _RouteMapState();
@@ -42,6 +49,21 @@ class _RouteMapState extends State<RouteMap> {
         widget.destination,
       ];
 
+  // Whether the pins are spread out enough to zoom to fit them. Pins on (or
+  // almost on) the same spot would make the camera zoom in endlessly and
+  // crash, so then the map just centres on the destination.
+  bool get _canFit {
+    final p = _points;
+    if (p.length < 2) return false;
+    final lats = p.map((e) => e.latitude);
+    final lngs = p.map((e) => e.longitude);
+    return lats.reduce(max) - lats.reduce(min) > 0.0005 ||
+        lngs.reduce(max) - lngs.reduce(min) > 0.0005;
+  }
+
+  CameraFit get _fitAll => CameraFit.coordinates(
+      coordinates: _points, padding: const EdgeInsets.all(56), maxZoom: 16);
+
   @override
   void didUpdateWidget(RouteMap old) {
     super.didUpdateWidget(old);
@@ -54,11 +76,10 @@ class _RouteMapState extends State<RouteMap> {
   }
 
   void _fit() {
-    if (_points.length == 1) {
-      _controller.move(widget.destination, 13);
+    if (_canFit) {
+      _controller.fitCamera(_fitAll);
     } else {
-      _controller.fitCamera(CameraFit.coordinates(
-          coordinates: _points, padding: const EdgeInsets.all(56)));
+      _controller.move(widget.destination, 13);
     }
   }
 
@@ -82,10 +103,7 @@ class _RouteMapState extends State<RouteMap> {
           options: MapOptions(
             initialCenter: widget.destination,
             initialZoom: 13,
-            initialCameraFit: _points.length > 1
-                ? CameraFit.coordinates(
-                    coordinates: _points, padding: const EdgeInsets.all(56))
-                : null,
+            initialCameraFit: _canFit ? _fitAll : null,
             onTap: widget.onPickupChanged == null
                 ? null
                 : (_, point) => widget.onPickupChanged!(point),
@@ -106,10 +124,10 @@ class _RouteMapState extends State<RouteMap> {
                 ),
               ]),
             MarkerLayer(markers: [
-              _pin(
-                  widget.destination, AppColors.blueDark, Icons.local_hospital),
+              _pin(widget.destination, AppColors.blueDark,
+                  widget.destinationIcon),
               if (widget.pickup != null)
-                _pin(widget.pickup!, AppColors.success, Icons.location_on),
+                _pin(widget.pickup!, AppColors.success, widget.pickupIcon),
               // The driver's car: a round white badge so it stands out.
               if (widget.driver != null)
                 Marker(

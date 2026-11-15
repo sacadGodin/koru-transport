@@ -78,8 +78,8 @@ class _AdminScheduleState extends State<AdminSchedule> {
             stream: _docs,
             builder: (context, snap) {
               if (snap.hasError) {
-                return Text(context.t('Could not load the schedule.',
-                    'Takvim yüklenemedi.'));
+                return Text(context.t(
+                    'Could not load the schedule.', 'Takvim yüklenemedi.'));
               }
               if (!snap.hasData) {
                 return const Center(child: CircularProgressIndicator());
@@ -102,8 +102,7 @@ class _AdminScheduleState extends State<AdminSchedule> {
                     },
                   ),
                   const SizedBox(height: 24),
-                  for (final s in slots)
-                    _SlotRow(key: _rows[s.hour], slot: s),
+                  for (final s in slots) _SlotRow(key: _rows[s.hour], slot: s),
                 ],
               );
             },
@@ -135,8 +134,8 @@ class _AdminScheduleState extends State<AdminSchedule> {
             onPressed: _pickDay,
             icon: const Icon(Icons.calendar_today_outlined, size: 18),
             label: Text(formatDate(_day),
-                style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w800)),
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
           ),
           IconButton(
             tooltip: context.t('Next day', 'Sonraki gün'),
@@ -175,8 +174,8 @@ class _AdminScheduleState extends State<AdminSchedule> {
           TextButton(
             onPressed: () async {
               final n = await _askNumber(context,
-                  title: context.t(
-                      'Bookings per hour', 'Saat başına rezervasyon'),
+                  title:
+                      context.t('Bookings per hour', 'Saat başına rezervasyon'),
                   help: context.t(
                       'How many rides can start in the same hour, for every '
                           'hour that has no number of its own.',
@@ -226,7 +225,7 @@ class HourLegend extends StatelessWidget {
   Widget build(BuildContext context) {
     String label(SlotStatus s) => switch (s) {
           SlotStatus.available => context.t('Empty', 'Boş'),
-          SlotStatus.booked => context.t('Partly booked', 'Kısmen dolu'),
+          SlotStatus.booked => context.t('Booked', 'Rezervasyon var'),
           SlotStatus.full => context.t('Full', 'Dolu'),
           _ => context.t('Closed', 'Kapalı'),
         };
@@ -259,7 +258,7 @@ class HourLegend extends StatelessWidget {
   }
 }
 
-// The 24 hours of a day as coloured boxes: green EMPTY, amber "2 / 3",
+// The 24 hours of a day as coloured boxes: green EMPTY, amber BOOKED,
 // red FULL, grey CLOSED. Hours that have passed are faded.
 class HourBoard extends StatelessWidget {
   const HourBoard({super.key, required this.slots, this.onTap});
@@ -302,22 +301,24 @@ class _HourBox extends StatelessWidget {
     final color = _hourColor(status);
     final big = switch (status) {
       SlotStatus.available => context.t('EMPTY', 'BOŞ'),
-      SlotStatus.booked => '${slot.count} / ${slot.capacity}',
+      SlotStatus.booked => context.t('BOOKED', 'REZERVE'),
       SlotStatus.full => context.t('FULL', 'DOLU'),
       _ => context.t('CLOSED', 'KAPALI'),
     };
     final small = switch (status) {
       SlotStatus.available =>
         context.t('${slot.capacity} free', '${slot.capacity} boş yer'),
-      SlotStatus.booked =>
-        context.t('${slot.left} free', '${slot.left} boş yer'),
+      SlotStatus.booked => context.t(
+          '${slot.count} / ${slot.capacity} · ${slot.left} free',
+          '${slot.count} / ${slot.capacity} · ${slot.left} boş'),
       SlotStatus.full => '${slot.count} / ${slot.capacity}',
       _ => '',
     };
     return Opacity(
       opacity: slot.isPast ? 0.45 : 1,
       child: Material(
-        color: status == SlotStatus.full ? color : color.withValues(alpha: 0.14),
+        color:
+            status == SlotStatus.full ? color : color.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
           onTap: onTap == null ? null : () => onTap!(slot),
@@ -370,8 +371,8 @@ class TodayHours extends StatefulWidget {
 }
 
 class _TodayHoursState extends State<TodayHours> {
-  final _day = DateTime(
-      DateTime.now().year, DateTime.now().month, DateTime.now().day);
+  final _day =
+      DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
   late final _docs = scheduleStore.watchDay(_day);
 
   @override
@@ -389,9 +390,8 @@ class _TodayHoursState extends State<TodayHours> {
         builder: (context, _) => StreamBuilder(
           stream: _docs,
           builder: (context, snap) {
-            final slots = snap.hasData
-                ? scheduleStore.slotsOf(_day, snap.data!)
-                : null;
+            final slots =
+                snap.hasData ? scheduleStore.slotsOf(_day, snap.data!) : null;
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -401,15 +401,14 @@ class _TodayHoursState extends State<TodayHours> {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Text(
-                        context.t("Today's time slots",
-                            'Bugünün saat dilimleri'),
+                        context.t(
+                            "Today's time slots", 'Bugünün saat dilimleri'),
                         style: const TextStyle(
                             fontSize: 18, fontWeight: FontWeight.w800)),
                     TextButton.icon(
                       onPressed: widget.onOpenSchedule,
                       icon: const Icon(Icons.calendar_view_day_outlined),
-                      label: Text(context.t(
-                          'Open schedule (other days)',
+                      label: Text(context.t('Open schedule (other days)',
                           'Takvimi aç (diğer günler)')),
                     ),
                   ],
@@ -507,8 +506,8 @@ class _SlotRow extends StatelessWidget {
                     ),
                     if (slot.ownCapacity != null)
                       Text(
-                          context.t('Own limit for this hour',
-                              'Bu saate özel sınır'),
+                          context.t(
+                              'Own limit for this hour', 'Bu saate özel sınır'),
                           style: const TextStyle(
                               fontSize: 12, color: AppColors.muted)),
                   ],
@@ -576,8 +575,7 @@ class _SlotMenu extends StatelessWidget {
         if (slot.capacity != 0)
           PopupMenuItem(
               value: 'close',
-              child: Text(context.t(
-                  'Close this hour (no new bookings)',
+              child: Text(context.t('Close this hour (no new bookings)',
                   'Bu saati kapat (yeni rezervasyon yok)'))),
         if (slot.ownCapacity != null)
           PopupMenuItem(
@@ -616,8 +614,7 @@ class _BookingLine extends StatelessWidget {
                 style: TextStyle(
                     color: AppColors.blue, fontWeight: FontWeight.w700)),
           ),
-          Text('${b.from} → ${b.branch}',
-              style: const TextStyle(color: AppColors.muted)),
+          Text(b.route, style: const TextStyle(color: AppColors.muted)),
           StageBadge(b.stage),
           if (b.createdAt != null)
             Text(
@@ -645,7 +642,7 @@ class _StatusChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = switch (status) {
       SlotStatus.available => AppColors.success,
-      SlotStatus.booked => AppColors.blue,
+      SlotStatus.booked => AppColors.gold,
       SlotStatus.full => AppColors.emergencyText,
       SlotStatus.closed || SlotStatus.past => AppColors.muted,
     };
@@ -695,12 +692,13 @@ class BookingMenu extends StatelessWidget {
               child: Text(context.t('Reschedule', 'Yeniden planla'))),
           PopupMenuItem(
               value: 'cancel',
-              child: Text(context.t('Cancel booking', 'Rezervasyonu iptal et'))),
+              child:
+                  Text(context.t('Cancel booking', 'Rezervasyonu iptal et'))),
         ] else
           PopupMenuItem(
               value: 'restore',
-              child: Text(context.t('Restore as new request',
-                  'Yeni talep olarak geri al'))),
+              child: Text(context.t(
+                  'Restore as new request', 'Yeni talep olarak geri al'))),
         PopupMenuItem(
             value: 'call',
             child: Text(
@@ -761,8 +759,8 @@ Future<void> rescheduleBooking(BuildContext context, Booking b) async {
       context: context, builder: (_) => _RescheduleDialog(b));
   if (picked == null || !context.mounted) return;
   final (date, hour) = picked;
-  final error = await bookingStore.reschedule(
-      b, date, TimeOfDay(hour: hour, minute: 0));
+  final error =
+      await bookingStore.reschedule(b, date, TimeOfDay(hour: hour, minute: 0));
   if (context.mounted) showSaveError(context, error);
 }
 
@@ -843,8 +841,9 @@ class _RescheduleDialogState extends State<_RescheduleDialog> {
             onPressed: () => Navigator.pop(context),
             child: Text(context.t('Back', 'Geri'))),
         FilledButton(
-            onPressed:
-                _hour == null ? null : () => Navigator.pop(context, (_date, _hour!)),
+            onPressed: _hour == null
+                ? null
+                : () => Navigator.pop(context, (_date, _hour!)),
             child: Text(context.t('Move booking', 'Rezervasyonu taşı'))),
       ],
     );

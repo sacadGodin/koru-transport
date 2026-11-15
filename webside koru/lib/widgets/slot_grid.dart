@@ -116,6 +116,8 @@ class _SlotGridState extends State<SlotGrid> {
               ),
           ],
         ),
+        const SizedBox(height: 10),
+        const _SlotLegend(),
         if (widget.errorText != null && problem == null) ...[
           const SizedBox(height: 8),
           Text(widget.errorText!,
@@ -154,21 +156,33 @@ class _SlotTile extends StatelessWidget {
     final (bg, fg, border) = selected && slot.open
         ? (AppColors.blue, Colors.white, AppColors.blue)
         : switch (status) {
-            SlotStatus.available ||
-            SlotStatus.booked =>
-              (Colors.white, AppColors.text, AppColors.border),
+            SlotStatus.available => (
+                Colors.white,
+                AppColors.text,
+                AppColors.border
+              ),
+            // Someone already booked this hour, places are still left.
+            SlotStatus.booked => (
+                AppColors.gold.withValues(alpha: 0.12),
+                AppColors.text,
+                AppColors.gold
+              ),
             SlotStatus.full => (
                 AppColors.emergencyBg,
                 AppColors.emergencyText,
                 selected ? AppColors.emergencyText : AppColors.emergencyBg
               ),
-            SlotStatus.closed ||
-            SlotStatus.past =>
-              (AppColors.surface, AppColors.muted, AppColors.surface),
+            SlotStatus.closed || SlotStatus.past => (
+                AppColors.surface,
+                AppColors.muted,
+                AppColors.surface
+              ),
           };
     final note = switch (status) {
-      SlotStatus.available || SlotStatus.booked =>
+      SlotStatus.available =>
         context.t('${slot.left} left', '${slot.left} yer'),
+      SlotStatus.booked =>
+        context.t('Booked · ${slot.left} left', 'Rezerve · ${slot.left} yer'),
       _ => status.label(context),
     };
 
@@ -213,6 +227,48 @@ class _SlotTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// What the slot colours mean.
+class _SlotLegend extends StatelessWidget {
+  const _SlotLegend();
+
+  @override
+  Widget build(BuildContext context) {
+    Widget item(Color bg, Color border, String text) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 14,
+              height: 14,
+              decoration: BoxDecoration(
+                color: bg,
+                border: Border.all(color: border),
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(text,
+                style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+          ],
+        );
+    return Wrap(
+      spacing: 16,
+      runSpacing: 6,
+      children: [
+        item(Colors.white, AppColors.border, context.t('Free', 'Boş')),
+        item(
+            AppColors.gold.withValues(alpha: 0.12),
+            AppColors.gold,
+            context.t('Booked by someone (places left)',
+                'Başkası rezerve etti (yer var)')),
+        item(AppColors.emergencyBg, AppColors.emergencyText,
+            context.t('Fully booked', 'Tamamen dolu')),
+        item(AppColors.surface, AppColors.surface,
+            context.t('Closed / past', 'Kapalı / geçti')),
+      ],
     );
   }
 }

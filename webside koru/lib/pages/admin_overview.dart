@@ -73,8 +73,7 @@ class _AdminOverviewState extends State<AdminOverview> {
 
     final waiting =
         bookingStore.bookings.where((b) => b.stage == Stage.newRequest).length;
-    final todayNotReady =
-        _on(today).where((b) => b.stage.next != null).length;
+    final todayNotReady = _on(today).where((b) => b.stage.next != null).length;
 
     final selected = _inMonth(_month);
 
@@ -231,7 +230,7 @@ class _AdminOverviewState extends State<AdminOverview> {
             _Breakdown(
               title: context.t('Branch', 'Şube'),
               rows: [
-                for (final br in branches)
+                for (final br in destinations)
                   (
                     Icons.local_hospital_outlined,
                     br,
@@ -243,7 +242,7 @@ class _AdminOverviewState extends State<AdminOverview> {
             _Breakdown(
               title: context.t('Extra help needed', 'Ek ihtiyaçlar'),
               rows: [
-                for (final n in MobilityNeed.values)
+                for (final n in offeredNeeds)
                   (
                     Icons.medical_services_outlined,
                     n.label(context),
@@ -600,7 +599,7 @@ class _Upcoming extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w700)),
                 subtitle: Text(
                     '${DateTime(b.date.year, b.date.month, b.date.day) == today ? context.t('Today', 'Bugün') : context.t('Tomorrow', 'Yarın')}'
-                    '  ·  ${b.ref}  ·  ${b.from} → ${b.branch}',
+                    '  ·  ${b.ref}  ·  ${b.route}',
                     overflow: TextOverflow.ellipsis),
                 trailing: StageBadge(b.stage),
               ),

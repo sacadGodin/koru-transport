@@ -203,10 +203,180 @@ const translations = <String, Map<Lang, String>>{
     Lang.ar: "إخفاء كلمة المرور",
     Lang.ru: "Скрыть пароль"
   },
+  "Forgot password?": {
+    Lang.fr: "Mot de passe oublié ?",
+    Lang.ar: "نسيت كلمة المرور؟",
+    Lang.ru: "Забыли пароль?"
+  },
   "Sign in": {
     Lang.fr: "Se connecter",
     Lang.ar: "تسجيل الدخول",
     Lang.ru: "Войти"
+  },
+  // Sign-in page (first page of the site).
+  "Staff": {Lang.fr: "Personnel", Lang.ar: "موظف", Lang.ru: "Сотрудник"},
+  "Admin": {
+    Lang.fr: "Administrateur",
+    Lang.ar: "مسؤول",
+    Lang.ru: "Администратор"
+  },
+  "Driver": {Lang.fr: "Chauffeur", Lang.ar: "سائق", Lang.ru: "Водитель"},
+  "Welcome back": {
+    Lang.fr: "Bon retour",
+    Lang.ar: "مرحبًا بعودتك",
+    Lang.ru: "С возвращением"
+  },
+  "Sign in to the Koru Transport portal.": {
+    Lang.fr: "Connectez-vous au portail Koru Transport.",
+    Lang.ar: "سجّل الدخول إلى بوابة كورو للنقل.",
+    Lang.ru: "Войдите в портал Koru Transport."
+  },
+  "I am signing in as": {
+    Lang.fr: "Je me connecte en tant que",
+    Lang.ar: "أسجّل الدخول بصفتي",
+    Lang.ru: "Я вхожу как"
+  },
+  "Book rides and see transport information.": {
+    Lang.fr: "Réservez des trajets et consultez les informations de transport.",
+    Lang.ar: "احجز الرحلات واطّلع على معلومات النقل.",
+    Lang.ru: "Заказывайте поездки и смотрите информацию о транспорте."
+  },
+  "Manage bookings, drivers, the schedule and all settings.": {
+    Lang.fr:
+        "Gérez les réservations, les chauffeurs, le planning et tous les réglages.",
+    Lang.ar: "أدر الحجوزات والسائقين والجدول وجميع الإعدادات.",
+    Lang.ru:
+        "Управляйте бронированиями, водителями, расписанием и всеми настройками."
+  },
+  "Use the account your coordinator gave you.": {
+    Lang.fr: "Utilisez le compte fourni par votre coordinateur.",
+    Lang.ar: "استخدم الحساب الذي أعطاك إياه المنسق.",
+    Lang.ru: "Используйте учётную запись, выданную координатором."
+  },
+  "This account is not a staff account.": {
+    Lang.fr: "Ce compte n'est pas un compte du personnel.",
+    Lang.ar: "هذا الحساب ليس حساب موظف.",
+    Lang.ru: "Эта учётная запись не принадлежит сотруднику."
+  },
+  "Secure sign-in for authorised personnel": {
+    Lang.fr: "Connexion sécurisée réservée au personnel autorisé",
+    Lang.ar: "تسجيل دخول آمن للموظفين المخوّلين",
+    Lang.ru: "Защищённый вход для уполномоченного персонала"
+  },
+  "KORU HOSPITAL · STAFF PORTAL": {
+    Lang.fr: "HÔPITAL KORU · ESPACE PERSONNEL",
+    Lang.ar: "مستشفى كورو · بوابة الموظفين",
+    Lang.ru: "БОЛЬНИЦА KORU · ПОРТАЛ СОТРУДНИКОВ"
+  },
+  "Moving People,\nConnecting Care.": {
+    Lang.fr: "Transporter les personnes,\nrelier les soins.",
+    Lang.ar: "ننقل الناس،\nونصل الرعاية.",
+    Lang.ru: "Перевозим людей,\nсоединяем заботу."
+  },
+  "The Koru Transport portal brings coordinators, administrators and drivers together to move every patient safely and on time.":
+      {
+    Lang.fr:
+        "Le portail Koru Transport réunit coordinateurs, administrateurs et chauffeurs pour transporter chaque patient en sécurité et à l'heure.",
+    Lang.ar:
+        "تجمع بوابة كورو للنقل المنسقين والمسؤولين والسائقين لنقل كل مريض بأمان وفي الوقت المحدد.",
+    Lang.ru:
+        "Портал Koru Transport объединяет координаторов, администраторов и водителей, чтобы каждый пациент был доставлен безопасно и вовремя."
+  },
+  "Live dispatch and trip tracking": {
+    Lang.fr: "Répartition et suivi des trajets en direct",
+    Lang.ar: "إرسال مباشر وتتبّع للرحلات",
+    Lang.ru: "Диспетчеризация и отслеживание поездок в реальном времени"
+  },
+  "Bookings and 24-hour schedule": {
+    Lang.fr: "Réservations et planning 24 h/24",
+    Lang.ar: "الحجوزات وجدول على مدار 24 ساعة",
+    Lang.ru: "Бронирования и круглосуточное расписание"
+  },
+  "Role-based secure access": {
+    Lang.fr: "Accès sécurisé selon le rôle",
+    Lang.ar: "وصول آمن حسب الدور",
+    Lang.ru: "Защищённый доступ по ролям"
+  },
+  "Admin dashboard": {
+    Lang.fr: "Tableau de bord administrateur",
+    Lang.ar: "لوحة تحكم المسؤول",
+    Lang.ru: "Панель администратора"
+  },
+  "Driver dashboard": {
+    Lang.fr: "Tableau de bord chauffeur",
+    Lang.ar: "لوحة تحكم السائق",
+    Lang.ru: "Панель водителя"
+  },
+  "Account": {Lang.fr: "Compte", Lang.ar: "الحساب", Lang.ru: "Аккаунт"},
+  "Accounts": {Lang.fr: "Comptes", Lang.ar: "الحسابات", Lang.ru: "Аккаунты"},
+  "Add account": {
+    Lang.fr: "Ajouter un compte",
+    Lang.ar: "إضافة حساب",
+    Lang.ru: "Добавить аккаунт"
+  },
+  "Edit account": {
+    Lang.fr: "Modifier le compte",
+    Lang.ar: "تعديل الحساب",
+    Lang.ru: "Изменить аккаунт"
+  },
+  "Remove account": {
+    Lang.fr: "Supprimer le compte",
+    Lang.ar: "إزالة الحساب",
+    Lang.ru: "Удалить аккаунт"
+  },
+  "Remove": {Lang.fr: "Supprimer", Lang.ar: "إزالة", Lang.ru: "Удалить"},
+  "No accounts yet.": {
+    Lang.fr: "Aucun compte pour l'instant.",
+    Lang.ar: "لا توجد حسابات بعد.",
+    Lang.ru: "Аккаунтов пока нет."
+  },
+  "(no name)": {
+    Lang.fr: "(sans nom)",
+    Lang.ar: "(بدون اسم)",
+    Lang.ru: "(без имени)"
+  },
+  "(you)": {Lang.fr: "(vous)", Lang.ar: "(أنت)", Lang.ru: "(вы)"},
+  "Access": {Lang.fr: "Accès", Lang.ar: "الصلاحية", Lang.ru: "Доступ"},
+  "Manages everything in this dashboard.": {
+    Lang.fr: "Gère tout dans ce tableau de bord.",
+    Lang.ar: "يدير كل شيء في لوحة التحكم هذه.",
+    Lang.ru: "Управляет всем на этой панели."
+  },
+  "Uses the main site only: books rides and sees information.": {
+    Lang.fr:
+        "Utilise uniquement le site principal : réserve des trajets et consulte les informations.",
+    Lang.ar: "يستخدم الموقع الرئيسي فقط: يحجز الرحلات ويطّلع على المعلومات.",
+    Lang.ru:
+        "Пользуется только основным сайтом: заказывает поездки и смотрит информацию."
+  },
+  "Not allowed. Only admins can manage accounts.": {
+    Lang.fr: "Non autorisé. Seuls les administrateurs gèrent les comptes.",
+    Lang.ar: "غير مسموح. يمكن للمسؤولين فقط إدارة الحسابات.",
+    Lang.ru: "Нет доступа. Аккаунтами управляют только администраторы."
+  },
+  "Could not save the account. Please try again.": {
+    Lang.fr: "Impossible d'enregistrer le compte. Veuillez réessayer.",
+    Lang.ar: "تعذّر حفظ الحساب. يرجى المحاولة مرة أخرى.",
+    Lang.ru: "Не удалось сохранить аккаунт. Попробуйте ещё раз."
+  },
+  "Could not remove the account.": {
+    Lang.fr: "Impossible de supprimer le compte.",
+    Lang.ar: "تعذّرت إزالة الحساب.",
+    Lang.ru: "Не удалось удалить аккаунт."
+  },
+  "Staff sign in with the Staff tab and use the main site: book rides and see information. Admins sign in with the Admin tab and manage everything here. Drivers are in the Drivers section.":
+      {
+    Lang.fr:
+        "Le personnel se connecte avec l'onglet Personnel et utilise le site principal : réserver des trajets et consulter les informations. Les administrateurs se connectent avec l'onglet Administrateur et gèrent tout ici. Les chauffeurs sont dans la section Chauffeurs.",
+    Lang.ar:
+        "يسجّل الموظفون الدخول من تبويب الموظف ويستخدمون الموقع الرئيسي: حجز الرحلات والاطلاع على المعلومات. يسجّل المسؤولون الدخول من تبويب المسؤول ويديرون كل شيء هنا. السائقون في قسم السائقين.",
+    Lang.ru:
+        "Сотрудники входят через вкладку «Сотрудник» и пользуются основным сайтом: заказывают поездки и смотрят информацию. Администраторы входят через вкладку «Администратор» и управляют всем здесь. Водители — в разделе «Водители»."
+  },
+  "{} will no longer be able to sign in. This cannot be undone.": {
+    Lang.fr: "{} ne pourra plus se connecter. Cette action est irréversible.",
+    Lang.ar: "لن يتمكن {} من تسجيل الدخول بعد الآن. لا يمكن التراجع عن ذلك.",
+    Lang.ru: "{} больше не сможет войти. Это действие нельзя отменить."
   },
   "Back to website": {
     Lang.fr: "Retour au site",
@@ -220,14 +390,14 @@ const translations = <String, Map<Lang, String>>{
     Lang.ar: "المنسقون متاحون على مدار الساعة",
     Lang.ru: "Координаторы на связи 24/7"
   },
-  "Ambulance transfers, accessible vehicles, free buses and airport pickups for Koru Hospital patients and visitors.":
+  "Ambulance transfers, accessible vehicles and airport pickups for Koru Hospital patients and visitors.":
       {
     Lang.fr:
-        "Transferts en ambulance, véhicules adaptés, bus gratuits et accueil à l'aéroport pour les patients et visiteurs de l'hôpital Koru.",
+        "Transferts en ambulance, véhicules adaptés et accueil à l'aéroport pour les patients et visiteurs de l'hôpital Koru.",
     Lang.ar:
-        "نقل بالإسعاف، ومركبات مجهزة لذوي الإعاقة، وحافلات مجانية، واستقبال من المطار لمرضى وزوار مستشفى كورو.",
+        "نقل بالإسعاف، ومركبات مجهزة لذوي الإعاقة، واستقبال من المطار لمرضى وزوار مستشفى كورو.",
     Lang.ru:
-        "Перевозка на скорой, автомобили для людей с ограниченной подвижностью, бесплатные автобусы и встреча в аэропорту для пациентов и посетителей больницы Koru."
+        "Перевозка на скорой, автомобили для людей с ограниченной подвижностью и встреча в аэропорту для пациентов и посетителей больницы Koru."
   },
   "Service": {Lang.fr: "Service", Lang.ar: "الخدمة", Lang.ru: "Услуга"},
   "From": {Lang.fr: "Départ", Lang.ar: "من", Lang.ru: "Откуда"},
@@ -446,34 +616,7 @@ const translations = <String, Map<Lang, String>>{
     Lang.ru: "Заказать эту услугу"
   },
 
-  // Homepage: free buses, comments, branches, drivers.
-  "Next free buses": {
-    Lang.fr: "Prochains bus gratuits",
-    Lang.ar: "الحافلات المجانية القادمة",
-    Lang.ru: "Ближайшие бесплатные автобусы"
-  },
-  "Free for everyone visiting Koru Hospital. Look for the blue bus sign at the main entrance.":
-      {
-    Lang.fr:
-        "Gratuit pour tous les visiteurs de l'hôpital Koru. Repérez le panneau bleu « Bus » à l'entrée principale.",
-    Lang.ar:
-        "مجانية لكل زوار مستشفى كورو. ابحث عن لافتة الحافلة الزرقاء عند المدخل الرئيسي.",
-    Lang.ru:
-        "Бесплатно для всех посетителей больницы Koru. Ищите синий знак автобуса у главного входа."
-  },
-  "Every {} min": {
-    Lang.fr: "Toutes les {} min",
-    Lang.ar: "كل {} دقيقة",
-    Lang.ru: "Каждые {} мин"
-  },
-  "FREE": {Lang.fr: "GRATUIT", Lang.ar: "مجاني", Lang.ru: "БЕСПЛАТНО"},
-  "Free": {Lang.fr: "Gratuit", Lang.ar: "مجاني", Lang.ru: "Бесплатно"},
-  "Schedule to be announced": {
-    Lang.fr: "Horaires à venir",
-    Lang.ar: "سيتم الإعلان عن المواعيد",
-    Lang.ru: "Расписание будет объявлено"
-  },
-  "Tomorrow": {Lang.fr: "Demain", Lang.ar: "غدًا", Lang.ru: "Завтра"},
+  // Homepage: comments, branches, drivers.
   "Koru Hospital Çukurambar": {
     Lang.fr: "Hôpital Koru Çukurambar",
     Lang.ar: "مستشفى كورو جوكورامبار",
@@ -547,6 +690,26 @@ const translations = <String, Map<Lang, String>>{
     Lang.ru:
         "Собственные водители больницы Koru, обученные безопасно помогать пациентам садиться в машину и выходить из неё."
   },
+  "Medical Transport Driver": {
+    Lang.fr: "Chauffeur de transport médical",
+    Lang.ar: "سائق نقل طبي",
+    Lang.ru: "Водитель медицинского транспорта"
+  },
+  "Accessible Transport Driver": {
+    Lang.fr: "Chauffeur de transport adapté",
+    Lang.ar: "سائق نقل لذوي الاحتياجات الخاصة",
+    Lang.ru: "Водитель адаптированного транспорта"
+  },
+  "Airport Transfer Driver": {
+    Lang.fr: "Chauffeur de transfert aéroport",
+    Lang.ar: "سائق النقل من وإلى المطار",
+    Lang.ru: "Водитель трансфера из аэропорта"
+  },
+  "Patient Transfer Driver": {
+    Lang.fr: "Chauffeur de transfert de patients",
+    Lang.ar: "سائق نقل المرضى",
+    Lang.ru: "Водитель по перевозке пациентов"
+  },
   "With Koru since {}": {
     Lang.fr: "Chez Koru depuis {}",
     Lang.ar: "مع كورو منذ {}",
@@ -570,14 +733,14 @@ const translations = <String, Map<Lang, String>>{
     Lang.ar: "مستشفى كورو — ثلاثة مواقع في أنقرة",
     Lang.ru: "Больница Koru — три филиала в Анкаре"
   },
-  "Koru Hospital is a healthcare institution in Ankara, Türkiye, associated with the vision and expertise of two doctors: Dr. Hassan Berri, a urologist, and Dr. Aydın Berri, a gynecologist.":
+  "Koru Hospital is a healthcare institution in Ankara, Türkiye, associated with the vision and expertise of two doctors: Prof. Dr. Hassan Birri, a urologist, and Prof. Dr. Aydın Birri, a gynecologist.":
       {
     Lang.fr:
-        "Koru Hospital est un établissement de santé à Ankara, en Turquie, porté par la vision et l'expertise de deux médecins : le Dr Hassan Berri, urologue, et le Dr Aydın Berri, gynécologue.",
+        "Koru Hospital est un établissement de santé à Ankara, en Turquie, porté par la vision et l'expertise de deux médecins : le Pr Dr Hassan Birri, urologue, et le Pr Dr Aydın Birri, gynécologue.",
     Lang.ar:
-        "مستشفى كورو مؤسسة صحية في أنقرة، تركيا، ترتبط برؤية وخبرة طبيبين: الدكتور حسن بيري، أخصائي المسالك البولية، والدكتور آيدن بيري، أخصائي أمراض النساء.",
+        "مستشفى كورو مؤسسة صحية في أنقرة، تركيا، ترتبط برؤية وخبرة طبيبين: البروفيسور الدكتور حسن بيري، أخصائي المسالك البولية، والبروفيسور الدكتور آيدن بيري، أخصائي أمراض النساء.",
     Lang.ru:
-        "Больница Koru — медицинское учреждение в Анкаре (Турция), связанное с видением и опытом двух врачей: д-ра Хасана Берри, уролога, и д-ра Айдына Берри, гинеколога."
+        "Больница Koru — медицинское учреждение в Анкаре (Турция), связанное с видением и опытом двух врачей: проф. д-ра Хасана Бирри, уролога, и проф. д-ра Айдына Бирри, гинеколога."
   },
   "Today, Koru Hospital serves patients across three locations in Ankara, providing access to medical services and supporting patients throughout their healthcare journey.":
       {
@@ -653,11 +816,6 @@ const translations = <String, Map<Lang, String>>{
     Lang.fr: "Modifier ou annuler une réservation",
     Lang.ar: "تعديل حجز أو إلغاؤه",
     Lang.ru: "Изменить или отменить бронирование"
-  },
-  "Free bus": {
-    Lang.fr: "Bus gratuit",
-    Lang.ar: "حافلة مجانية",
-    Lang.ru: "Бесплатный автобус"
   },
   "Other": {Lang.fr: "Autre", Lang.ar: "أخرى", Lang.ru: "Другое"},
   "Send us a message": {
@@ -1029,4 +1187,166 @@ const translations = <String, Map<Lang, String>>{
   "Purple": {Lang.fr: "Violet", Lang.ar: "بنفسجي", Lang.ru: "Фиолетовый"},
   "Rose": {Lang.fr: "Rose", Lang.ar: "وردي", Lang.ru: "Розовый"},
   "Orange": {Lang.fr: "Orange", Lang.ar: "برتقالي", Lang.ru: "Оранжевый"},
+
+  // Patient feedback page.
+  "Punctuality": {
+    Lang.fr: "Ponctualité",
+    Lang.ar: "الالتزام بالمواعيد",
+    Lang.ru: "Пунктуальность"
+  },
+  "Driver courtesy": {
+    Lang.fr: "Courtoisie du chauffeur",
+    Lang.ar: "لباقة السائق",
+    Lang.ru: "Вежливость водителя"
+  },
+  "Vehicle comfort & cleanliness": {
+    Lang.fr: "Confort et propreté du véhicule",
+    Lang.ar: "راحة المركبة ونظافتها",
+    Lang.ru: "Комфорт и чистота автомобиля"
+  },
+  "Safe driving": {
+    Lang.fr: "Conduite sûre",
+    Lang.ar: "القيادة الآمنة",
+    Lang.ru: "Безопасное вождение"
+  },
+  "Booking & communication": {
+    Lang.fr: "Réservation et communication",
+    Lang.ar: "الحجز والتواصل",
+    Lang.ru: "Бронирование и связь"
+  },
+  "Help getting in and out": {
+    Lang.fr: "Aide à la montée et à la descente",
+    Lang.ar: "المساعدة في الصعود والنزول",
+    Lang.ru: "Помощь при посадке и высадке"
+  },
+  "Poor": {
+    Lang.fr: "Mauvais",
+    Lang.ar: "ضعيف",
+    Lang.ru: "Плохо"
+  },
+  "Fair": {
+    Lang.fr: "Passable",
+    Lang.ar: "مقبول",
+    Lang.ru: "Удовлетворительно"
+  },
+  "Good": {
+    Lang.fr: "Bien",
+    Lang.ar: "جيد",
+    Lang.ru: "Хорошо"
+  },
+  "Very good": {
+    Lang.fr: "Très bien",
+    Lang.ar: "جيد جدًا",
+    Lang.ru: "Очень хорошо"
+  },
+  "Excellent": {
+    Lang.fr: "Excellent",
+    Lang.ar: "ممتاز",
+    Lang.ru: "Отлично"
+  },
+  "Tap a star to rate": {
+    Lang.fr: "Touchez une étoile pour noter",
+    Lang.ar: "اضغط على نجمة للتقييم",
+    Lang.ru: "Нажмите на звезду, чтобы оценить"
+  },
+  "Your feedback could not be sent. Check the internet connection and try again.": {
+    Lang.fr: "Votre avis n'a pas pu être envoyé. Vérifiez la connexion internet et réessayez.",
+    Lang.ar: "تعذّر إرسال رأيك. تحقّق من الاتصال بالإنترنت وحاول مرة أخرى.",
+    Lang.ru: "Не удалось отправить отзыв. Проверьте подключение к интернету и попробуйте снова."
+  },
+  "PATIENT FEEDBACK": {
+    Lang.fr: "AVIS DES PATIENTS",
+    Lang.ar: "آراء المرضى",
+    Lang.ru: "ОТЗЫВЫ ПАЦИЕНТОВ"
+  },
+  "How was your journey with Koru Transport?": {
+    Lang.fr: "Comment s'est passé votre trajet avec Koru Transport ?",
+    Lang.ar: "كيف كانت رحلتك مع Koru Transport؟",
+    Lang.ru: "Как прошла ваша поездка с Koru Transport?"
+  },
+  "Your opinion helps us care for every patient better. It takes about one minute and your name is optional.": {
+    Lang.fr: "Votre avis nous aide à mieux prendre soin de chaque patient. Cela prend environ une minute et votre nom est facultatif.",
+    Lang.ar: "رأيك يساعدنا على رعاية كل مريض بشكل أفضل. يستغرق الأمر دقيقة تقريبًا، وكتابة اسمك اختيارية.",
+    Lang.ru: "Ваше мнение помогает нам лучше заботиться о каждом пациенте. Это займёт около минуты, имя указывать не обязательно."
+  },
+  "Overall, how would you rate our service?": {
+    Lang.fr: "Dans l'ensemble, comment évaluez-vous notre service ?",
+    Lang.ar: "بشكل عام، كيف تقيّم خدمتنا؟",
+    Lang.ru: "В целом, как вы оцениваете наш сервис?"
+  },
+  "Which parts of the service is your feedback about?": {
+    Lang.fr: "Sur quels aspects du service porte votre avis ?",
+    Lang.ar: "ما أجزاء الخدمة التي يتعلّق بها رأيك؟",
+    Lang.ru: "К каким частям сервиса относится ваш отзыв?"
+  },
+  "Optional · choose any": {
+    Lang.fr: "Facultatif · plusieurs choix possibles",
+    Lang.ar: "اختياري · يمكنك اختيار أكثر من خيار",
+    Lang.ru: "Необязательно · можно выбрать несколько"
+  },
+  "Tell us more": {
+    Lang.fr: "Dites-nous en plus",
+    Lang.ar: "أخبرنا بالمزيد",
+    Lang.ru: "Расскажите подробнее"
+  },
+  "Optional": {
+    Lang.fr: "Facultatif",
+    Lang.ar: "اختياري",
+    Lang.ru: "Необязательно"
+  },
+  "About your ride": {
+    Lang.fr: "À propos de votre trajet",
+    Lang.ar: "عن رحلتك",
+    Lang.ru: "О вашей поездке"
+  },
+  "Choose…": {
+    Lang.fr: "Choisir…",
+    Lang.ar: "اختر…",
+    Lang.ru: "Выберите…"
+  },
+  "Booking reference": {
+    Lang.fr: "Numéro de réservation",
+    Lang.ar: "رقم الحجز",
+    Lang.ru: "Номер бронирования"
+  },
+  "Our patient services team reads every response. We may share a comment on our website with your first name only. Please do not write medical details.": {
+    Lang.fr: "Notre service patients lit chaque réponse. Nous pouvons publier un commentaire sur notre site avec votre prénom uniquement. Merci de ne pas indiquer d'informations médicales.",
+    Lang.ar: "يقرأ فريق خدمات المرضى كل ردّ. قد ننشر تعليقًا على موقعنا باسمك الأول فقط. يُرجى عدم كتابة معلومات طبية.",
+    Lang.ru: "Служба по работе с пациентами читает каждый ответ. Мы можем опубликовать отзыв на сайте только с вашим именем. Пожалуйста, не указывайте медицинские сведения."
+  },
+  "Please choose a star rating (step 1) before sending.": {
+    Lang.fr: "Veuillez choisir une note (étape 1) avant d'envoyer.",
+    Lang.ar: "يُرجى اختيار تقييم بالنجوم (الخطوة 1) قبل الإرسال.",
+    Lang.ru: "Пожалуйста, выберите оценку (шаг 1) перед отправкой."
+  },
+  "Thank you for your feedback": {
+    Lang.fr: "Merci pour votre avis",
+    Lang.ar: "شكرًا لك على رأيك",
+    Lang.ru: "Спасибо за ваш отзыв"
+  },
+  "Our patient services team will read it. We wish you good health.": {
+    Lang.fr: "Notre service patients le lira. Nous vous souhaitons une bonne santé.",
+    Lang.ar: "سيقرؤه فريق خدمات المرضى. نتمنى لك دوام الصحة.",
+    Lang.ru: "Служба по работе с пациентами его прочитает. Желаем вам крепкого здоровья."
+  },
+  "New feedback": {
+    Lang.fr: "Nouvel avis",
+    Lang.ar: "رأي جديد",
+    Lang.ru: "Новый отзыв"
+  },
+  "This screen will clear in {} seconds.": {
+    Lang.fr: "Cet écran s'effacera dans {} secondes.",
+    Lang.ar: "سيتم مسح هذه الشاشة خلال {} ثانية.",
+    Lang.ru: "Экран очистится через {} сек."
+  },
+  "Are you a patient or visitor?": {
+    Lang.fr: "Vous êtes patient ou visiteur ?",
+    Lang.ar: "هل أنت مريض أو زائر؟",
+    Lang.ru: "Вы пациент или посетитель?"
+  },
+  "Share your feedback": {
+    Lang.fr: "Partagez votre avis",
+    Lang.ar: "شاركنا رأيك",
+    Lang.ru: "Оставьте отзыв"
+  },
 };

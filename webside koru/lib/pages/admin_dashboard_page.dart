@@ -6,7 +6,6 @@ import '../data/bookings.dart';
 import '../data/drivers.dart';
 import '../data/feedback.dart';
 import '../data/messages.dart';
-import '../data/shuttles.dart';
 import '../data/staff_auth.dart';
 import '../lang.dart';
 import '../theme.dart';
@@ -15,6 +14,7 @@ import '../widgets/common.dart';
 import '../widgets/site_layout.dart';
 import 'admin_login_page.dart';
 import 'admin_overview.dart';
+import 'admin_reports.dart';
 import 'admin_schedule.dart';
 
 // Admin dashboard. The admin confirms new requests, books the date, time and
@@ -28,11 +28,11 @@ import 'admin_schedule.dart';
 // A message pops up when a new booking arrives.
 // The "Drivers" section adds, edits and deletes driver accounts and
 // switches them on or off.
+// Staff and admin accounts are added in the Firebase console. Staff sign in
+// to the main site only; admins open this dashboard.
 // The "Messages" section lists what visitors sent with the contact form.
 // The "Feedback" section lists patient comments; staff choose which ones
 // appear on the homepage.
-// The "Free buses" section sets the destination, departure times and
-// frequency of the free bus routes shown on the homepage.
 class AdminDashboardPage extends StatefulWidget {
   const AdminDashboardPage({super.key});
 
@@ -45,10 +45,10 @@ enum _View {
   overview,
   bookings,
   schedule,
+  reports,
   drivers,
   messages,
-  feedback,
-  shuttles
+  feedback
 }
 
 class _AdminDashboardPageState extends State<AdminDashboardPage> {
@@ -82,9 +82,9 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       duration: const Duration(seconds: 10),
-      content: Text(
-          '${context.t('New booking', 'Yeni rezervasyon')} ${b.ref} · '
-          '${b.patient} · ${formatDate(b.date)} ${formatTime(b.time)}'),
+      content:
+          Text('${context.t('New booking', 'Yeni rezervasyon')} ${b.ref} · '
+              '${b.patient} · ${formatDate(b.date)} ${formatTime(b.time)}'),
       action: SnackBarAction(
         label: context.t('Open', 'Aç'),
         onPressed: () => _openStage(b.stage),
@@ -122,20 +122,15 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Not signed in: show the login page instead.
-    if (!staffAuth.isStaff) return const AdminLoginPage();
+    // Only admins manage the site: anyone else sees the sign-in page.
+    if (!staffAuth.isAdmin) return const AdminLoginPage();
 
     final wide = !Responsive.isTablet(context);
 
     // Rebuild the content whenever a booking, driver or comment changes.
     final content = ListenableBuilder(
-      listenable: Listenable.merge([
-        bookingStore,
-        driverStore,
-        messageStore,
-        feedbackStore,
-        shuttleStore
-      ]),
+      listenable: Listenable.merge(
+          [bookingStore, driverStore, messageStore, feedbackStore]),
       builder: (context, _) => SingleChildScrollView(
         padding: EdgeInsets.all(Responsive.isMobile(context) ? 16 : 32),
         child: switch (_view) {
@@ -143,10 +138,10 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
               onOpenStage: _openStage,
               onOpenSchedule: () => setState(() => _view = _View.schedule)),
           _View.schedule => const AdminSchedule(),
+          _View.reports => const AdminReports(),
           _View.feedback => const _FeedbackList(),
           _View.drivers => const _DriverList(),
           _View.messages => const _MessageList(),
-          _View.shuttles => const _ShuttleList(),
           _View.bookings => Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -181,10 +176,10 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                 _View.overview => context.t('Overview', 'Genel bakış'),
                 _View.bookings => context.t('Bookings', 'Rezervasyonlar'),
                 _View.schedule => context.t('Schedule', 'Takvim'),
+                _View.reports => context.t('Monthly report', 'Aylık rapor'),
                 _View.drivers => context.t('Drivers', 'Sürücüler'),
                 _View.messages => context.t('Messages', 'Mesajlar'),
                 _View.feedback => context.t('Feedback', 'Görüşler'),
-                _View.shuttles => context.t('Free buses', 'Ücretsiz servisler'),
               }),
             ),
       drawer: wide
@@ -385,12 +380,15 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                         const SizedBox(width: 6),
                         Text(b.type.label(context)),
                       ])),
-                      DataCell(Text('${b.from} → ${b.branch}')),
+                      DataCell(Text(b.route)),
                       DataCell(
                           Text('${formatDate(b.date)}  ${formatTime(b.time)}')),
-                      DataCell(Text(b.needs.isEmpty
-                          ? '—'
-                          : b.needs.map((n) => n.label(context)).join(', '))),
+                      // Number of people first, then the needs.
+                      DataCell(Text([
+                        context.t(
+                            '${b.passengers} people', '${b.passengers} kişi'),
+                        for (final n in b.needs) n.label(context),
+                      ].join(', '))),
                       DataCell(Text(b.vehicle == null
                           ? '—'
                           : '${b.vehicle} / ${b.driver}')),
@@ -405,7 +403,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                                         ? AppColors.success
                                         : AppColors.blue),
                                 const SizedBox(width: 6),
-                                Text(b.trip!.label(context)),
+                                Text(b.trip!.label(context, b.type, b.branch)),
                               ])),
                       // When the patient sent the request.
                       DataCell(Text(b.createdAt == null
@@ -507,6 +505,11 @@ class _SideMenu extends StatelessWidget {
                   context.t('Schedule', 'Takvim'),
                   () => _open(context, _View.schedule),
                   selected: view == _View.schedule),
+              link(
+                  Icons.summarize_outlined,
+                  context.t('Monthly report', 'Aylık rapor'),
+                  () => _open(context, _View.reports),
+                  selected: view == _View.reports),
               link(Icons.badge_outlined, context.t('Drivers', 'Sürücüler'),
                   () => _open(context, _View.drivers),
                   selected: view == _View.drivers),
@@ -527,15 +530,10 @@ class _SideMenu extends StatelessWidget {
                   () => _open(context, _View.feedback),
                   selected: view == _View.feedback),
               link(
-                  Icons.directions_bus_outlined,
-                  context.t('Free buses', 'Ücretsiz servisler'),
-                  () => _open(context, _View.shuttles),
-                  selected: view == _View.shuttles),
-              link(
                   Icons.public,
                   context.t('View website', 'Siteyi görüntüle'),
                   () => Navigator.pushNamedAndRemoveUntil(
-                      context, '/', (_) => false)),
+                      context, '/home', (_) => false)),
               const Spacer(),
               // Which version of the site is running (set when building).
               Padding(
@@ -559,8 +557,7 @@ class _SideMenu extends StatelessWidget {
               link(Icons.logout, context.t('Sign out', 'Çıkış yap'), () async {
                 await staffAuth.signOut();
                 if (!context.mounted) return;
-                Navigator.pushNamedAndRemoveUntil(
-                    context, '/admin/login', (_) => false);
+                Navigator.pushNamedAndRemoveUntil(context, '/', (_) => false);
               }),
             ],
           ),
@@ -654,8 +651,25 @@ class _FeedbackList extends StatelessWidget {
                               fontWeight: FontWeight.w700)),
                   ],
                 ),
-                const SizedBox(height: 10),
-                Text(f.comment, style: const TextStyle(height: 1.5)),
+                if (f.aspects.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final a in f.aspects)
+                        Chip(
+                          avatar: Icon(a.icon, size: 16),
+                          label: Text(a.label(context)),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                    ],
+                  ),
+                ],
+                if (f.comment.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(f.comment, style: const TextStyle(height: 1.5)),
+                ],
                 const SizedBox(height: 12),
                 Wrap(
                   spacing: 8,
@@ -1290,252 +1304,6 @@ class _MessageList extends StatelessWidget {
               ],
             ),
           ),
-      ],
-    );
-  }
-}
-
-// Free buses section: one card per route (A, B, C) with what visitors see
-// on the homepage and a button to change it.
-class _ShuttleList extends StatelessWidget {
-  const _ShuttleList();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(context.t('Free buses', 'Ücretsiz servisler'),
-            style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800)),
-        Text(
-            context.t(
-                'Shown on the homepage under "Next free buses". A route says '
-                    '"Schedule to be announced" until it has a destination '
-                    'and at least one departure time.',
-                'Ana sayfada "Sıradaki ücretsiz servisler" altında görünür. '
-                    'Bir hat, varış noktası ve en az bir kalkış saati '
-                    'girilene kadar "Sefer saatleri yakında duyurulacak" '
-                    'olarak görünür.'),
-            style: const TextStyle(color: AppColors.muted)),
-        const SizedBox(height: 24),
-        for (final route in shuttleStore.routes)
-          Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border.all(color: AppColors.border),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: AppColors.blue,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Text(route.branch.id,
-                      style: const TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.w800)),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                          '${context.t(route.branch.en, route.branch.tr)} → '
-                          '${route.destination.isEmpty ? context.t('[No destination]', '[Varış noktası yok]') : route.destination}',
-                          style: const TextStyle(
-                              fontSize: 17, fontWeight: FontWeight.w800)),
-                      Text(
-                          [
-                            route.times.isEmpty
-                                ? context.t(
-                                    'No departure times', 'Kalkış saati yok')
-                                : route.times.join(', '),
-                            if (route.frequency != null)
-                              context.t('Every ${route.frequency} min',
-                                  'Her ${route.frequency} dk'),
-                          ].join(' · '),
-                          style: const TextStyle(color: AppColors.muted)),
-                      Text(
-                          route.announced
-                              ? context.t('Shown on the homepage',
-                                  'Ana sayfada görünüyor')
-                              : context.t(
-                                  'Visitors see "Schedule to be announced"',
-                                  'Ziyaretçiler "Sefer saatleri yakında duyurulacak" görür'),
-                          style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              color: route.announced
-                                  ? AppColors.success
-                                  : AppColors.muted)),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton(
-                  onPressed: () => showDialog<void>(
-                      context: context, builder: (_) => _ShuttleDialog(route)),
-                  child: Text(context.t('Edit', 'Düzenle')),
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-// Edit form for one free bus route: destination, departure times and how
-// often it runs. Leaving destination and times empty hides the schedule.
-class _ShuttleDialog extends StatefulWidget {
-  const _ShuttleDialog(this.route);
-
-  final ShuttleRoute route;
-
-  @override
-  State<_ShuttleDialog> createState() => _ShuttleDialogState();
-}
-
-class _ShuttleDialogState extends State<_ShuttleDialog> {
-  final _formKey = GlobalKey<FormState>();
-  late final _destination =
-      TextEditingController(text: widget.route.destination);
-  late final _times =
-      TextEditingController(text: widget.route.times.join(', '));
-  late final _frequency =
-      TextEditingController(text: widget.route.frequency?.toString() ?? '');
-  bool _busy = false;
-  String? _error;
-
-  @override
-  void dispose() {
-    for (final c in [_destination, _times, _frequency]) {
-      c.dispose();
-    }
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    if (_busy || !_formKey.currentState!.validate()) return;
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    final frequency = _frequency.text.trim();
-    final saved = await shuttleStore.save(ShuttleRoute(
-      branch: widget.route.branch,
-      destination: _destination.text.trim(),
-      times: parseTimes(_times.text)!,
-      frequency: frequency.isEmpty ? null : int.parse(frequency),
-    ));
-    if (!mounted) return;
-    if (saved) {
-      Navigator.pop(context);
-      return;
-    }
-    setState(() {
-      _busy = false;
-      _error = context.t('Could not save. Please try again.',
-          'Kaydedilemedi. Lütfen tekrar deneyin.');
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final branch = widget.route.branch;
-    return AlertDialog(
-      title: Text('${context.t('Route', 'Hat')} ${branch.id} · '
-          '${context.t(branch.en, branch.tr)}'),
-      content: SizedBox(
-        width: 380,
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                FieldLabel(context.t('Destination', 'Varış noktası'),
-                    child: TextFormField(
-                        controller: _destination,
-                        maxLength: 200,
-                        validator: (v) => (v == null || v.trim().isEmpty) &&
-                                (parseTimes(_times.text)?.isNotEmpty ?? false)
-                            ? context.t('Add a destination for these times',
-                                'Bu saatler için varış noktası girin')
-                            : null)),
-                const SizedBox(height: 14),
-                FieldLabel(
-                    context.t('Departure times (24-hour, comma separated)',
-                        'Kalkış saatleri (24 saat, virgülle ayırın)'),
-                    child: TextFormField(
-                        controller: _times,
-                        maxLines: 3,
-                        minLines: 1,
-                        decoration:
-                            const InputDecoration(hintText: '[08:00, 08:30]'),
-                        validator: (v) {
-                          final times = parseTimes(v ?? '');
-                          if (times == null) {
-                            return context.t('Use times like 08:30, 14:00',
-                                '08:30, 14:00 gibi saatler girin');
-                          }
-                          if (times.length > 100) {
-                            return context.t(
-                                'At most 100 times', 'En fazla 100 saat');
-                          }
-                          return null;
-                        })),
-                const SizedBox(height: 14),
-                FieldLabel(
-                    context.t('Every how many minutes (optional)',
-                        'Kaç dakikada bir (isteğe bağlı)'),
-                    child: TextFormField(
-                        controller: _frequency,
-                        keyboardType: TextInputType.number,
-                        validator: (v) {
-                          final text = v?.trim() ?? '';
-                          if (text.isEmpty) return null;
-                          final n = int.tryParse(text);
-                          return n == null || n < 1 || n > 1440
-                              ? context.t('A number of minutes, 1 to 1440',
-                                  '1 ile 1440 arasında dakika')
-                              : null;
-                        })),
-                const SizedBox(height: 8),
-                Text(
-                    context.t(
-                        'Leave destination and times empty to show '
-                            '"Schedule to be announced".',
-                        '"Sefer saatleri yakında duyurulacak" göstermek için '
-                            'varış noktası ve saatleri boş bırakın.'),
-                    style: const TextStyle(color: AppColors.muted)),
-                if (_error != null) ...[
-                  const SizedBox(height: 14),
-                  Text(_error!,
-                      style: TextStyle(
-                          color: Theme.of(context).colorScheme.error)),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(context.t('Cancel', 'İptal'))),
-        FilledButton(
-            onPressed: _busy ? null : _save,
-            child: Text(_busy
-                ? context.t('Saving...', 'Kaydediliyor...')
-                : context.t('Save', 'Kaydet'))),
       ],
     );
   }

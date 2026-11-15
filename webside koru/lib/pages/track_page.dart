@@ -275,7 +275,7 @@ class _TrackingViewState extends State<_TrackingView> {
   }
 
   // All steps of a booking, from request to arrival at the hospital.
-  List<_Step> _steps(BuildContext context) => [
+  List<_Step> _steps(BuildContext context, TrackingInfo info) => [
         (
           label: context.t('Request received', 'Talep alındı'),
           icon: Icons.inbox_outlined
@@ -289,7 +289,7 @@ class _TrackingViewState extends State<_TrackingView> {
           icon: Icons.event_available_outlined
         ),
         for (final trip in TripStatus.values)
-          (label: trip.label(context), icon: trip.icon),
+          (label: trip.label(context, info.type, info.branch), icon: trip.icon),
       ];
 
   // Index in [_steps] of the step the booking has reached.
@@ -309,7 +309,7 @@ class _TrackingViewState extends State<_TrackingView> {
   // not yet = grey. Plus the map while the driver is driving.
   Widget _progress(BuildContext context, TrackingInfo info) {
     if (info.stage == Stage.cancelled) return _cancelled(context);
-    final steps = _steps(context);
+    final steps = _steps(context, info);
     final current = _current(info);
     return Container(
       padding: EdgeInsets.all(Responsive.isMobile(context) ? 20 : 32),
@@ -337,7 +337,12 @@ class _TrackingViewState extends State<_TrackingView> {
           if (info.driverLocation != null) ...[
             const SizedBox(height: 20),
             RouteMap(
-              destination: branchLocation(info.branch),
+              destination: info.type.fromHospital
+                  ? airportLocation
+                  : branchLocation(info.branch),
+              destinationIcon: info.type.fromHospital
+                  ? Icons.flight
+                  : placeIcon(info.branch),
               driver: info.driverLocation,
             ),
           ],
@@ -419,7 +424,7 @@ class _TrackingViewState extends State<_TrackingView> {
                 child: Text(context.t('Book again', 'Yeniden rezervasyon')),
               ),
               OutlinedButton.icon(
-                onPressed: () => openLink('tel:${ContactInfo.phone}'),
+                onPressed: () => openLink('tel:${ContactInfo.phoneLink}'),
                 icon: const Icon(Icons.call_outlined),
                 label: Text(context.t('Call us', 'Bizi arayın')),
               ),
@@ -435,7 +440,11 @@ class _TrackingViewState extends State<_TrackingView> {
     final rows = [
       (context.t('Reference', 'Referans'), info.ref),
       (context.t('Transport', 'Ulaşım'), info.type.label(context)),
-      (context.t('To', 'Nereye'), info.branch),
+      if (info.type.fromHospital) ...[
+        (context.t('From', 'Nereden'), info.branch),
+        (context.t('To', 'Nereye'), airportName),
+      ] else
+        (context.t('To', 'Nereye'), info.branch),
       (
         context.t('Date & time', 'Tarih ve saat'),
         '${formatDate(info.date)}  ${formatTime(info.time)}'

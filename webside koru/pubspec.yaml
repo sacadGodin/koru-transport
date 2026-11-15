@@ -24,6 +24,8 @@ dependencies:
   google_fonts: ^6.2.1
   # Opens phone calls, WhatsApp, email and map links.
   latlong2: ^0.10.1
+  pdf: ^3.13.1
+  printing: ^5.15.1
   shared_preferences: ^2.5.6
   url_launcher: ^6.3.1
 

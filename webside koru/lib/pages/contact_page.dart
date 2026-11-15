@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 
 import '../data/bookings.dart';
 import '../data/messages.dart';
@@ -35,14 +36,14 @@ class ContactPage extends StatelessWidget {
                     icon: Icons.call_outlined,
                     title: context.t('Phone', 'Telefon'),
                     value: ContactInfo.phone,
-                    onTap: () => openLink('tel:${ContactInfo.phone}'),
+                    onTap: () => openLink('tel:${ContactInfo.phoneLink}'),
                   ),
                   _ChannelCard(
                     icon: Icons.chat_outlined,
                     title: 'WhatsApp',
                     value: ContactInfo.whatsapp,
                     onTap: () =>
-                        openLink('https://wa.me/${ContactInfo.whatsapp}'),
+                        openLink('https://wa.me/${ContactInfo.whatsappLink}'),
                   ),
                   _ChannelCard(
                     icon: Icons.mail_outline,
@@ -193,12 +194,12 @@ class _About extends StatelessWidget {
                   context.t(
                       'Koru Hospital is a healthcare institution in Ankara, '
                           'Türkiye, associated with the vision and expertise '
-                          'of two doctors: Dr. Hassan Berri, a urologist, and Dr. '
-                          'Aydın Berri, a gynecologist.',
+                          'of two doctors: Prof. Dr. Hassan Birri, a urologist, and '
+                          'Prof. Dr. Aydın Birri, a gynecologist.',
                       "Koru Hastanesi, Ankara'da iki doktorun vizyonu ve "
                           'uzmanlığıyla anılan bir sağlık kuruluşudur: üroloji '
-                          'uzmanı Dr. Hassan Berri ve kadın hastalıkları ve doğum '
-                          'uzmanı Dr. Aydın Berri.'),
+                          'uzmanı Prof. Dr. Hassan Birri ve kadın hastalıkları ve '
+                          'doğum uzmanı Prof. Dr. Aydın Birri.'),
                   style: body),
               const SizedBox(height: 12),
               Text(
@@ -483,7 +484,7 @@ class _ContactFormState extends State<_ContactForm> {
   }
 }
 
-// List of branches (name, address, phone) with a map placeholder under it.
+// List of branches (name, address, phone) with a map of them under it.
 class _Branches extends StatelessWidget {
   const _Branches();
 
@@ -524,8 +525,62 @@ class _Branches extends StatelessWidget {
             ),
           ),
         const SizedBox(height: 8),
-        const PlaceholderBox('[MAP EMBED]', height: 280),
+        const _BranchesMap(),
       ],
+    );
+  }
+}
+
+// OpenStreetMap with a pin on each branch. Tapping a pin opens that branch
+// in Google Maps.
+class _BranchesMap extends StatelessWidget {
+  const _BranchesMap();
+
+  @override
+  Widget build(BuildContext context) {
+    final points = [for (final b in branches) branchLocation(b)];
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: SizedBox(
+        height: 320,
+        child: FlutterMap(
+          options: MapOptions(
+            initialCenter: points.first,
+            initialZoom: 11,
+            initialCameraFit: CameraFit.coordinates(
+                coordinates: points, padding: const EdgeInsets.all(56)),
+          ),
+          children: [
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.koru.koru_website',
+            ),
+            MarkerLayer(markers: [
+              for (final branch in branches)
+                Marker(
+                  point: branchLocation(branch),
+                  width: 40,
+                  height: 40,
+                  alignment: Alignment.topCenter,
+                  child: Tooltip(
+                    message: branch,
+                    child: GestureDetector(
+                      onTap: () => openLink(
+                          'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent('Koru Hastanesi $branch')}'),
+                      child: Icon(Icons.location_on,
+                          size: 40, color: AppColors.blueDark),
+                    ),
+                  ),
+                ),
+            ]),
+            // OpenStreetMap credit (required by its terms of use).
+            RichAttributionWidget(attributions: [
+              TextSourceAttribution('OpenStreetMap contributors',
+                  onTap: () => openLink('https://openstreetmap.org/copyright')),
+            ]),
+          ],
+        ),
+      ),
     );
   }
 }

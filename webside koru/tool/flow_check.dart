@@ -3,7 +3,6 @@
 //   patient books -> looks up with ref + code -> watches live tracking
 //   coordinator adds a driver, confirms, reserves, assigns the driver
 //   driver signs in, sees the trip and drives it to "completed"
-//   coordinator sets a free bus route; visitors see it but cannot change it
 //
 // It is built as a small web app (the Firebase web SDK only loads in a
 // real page, not inside "flutter test"). Run from the functions folder:
@@ -23,7 +22,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:koru_website/data/bookings.dart';
 import 'package:koru_website/data/drivers.dart';
-import 'package:koru_website/data/shuttles.dart';
 import 'package:koru_website/data/staff_auth.dart';
 import 'package:koru_website/data/tracking.dart';
 import 'package:koru_website/firebase_options.dart';
@@ -76,6 +74,7 @@ Future<void> runFlow() async {
     date: DateTime.now().add(const Duration(days: 2)),
     time: const TimeOfDay(hour: 9, minute: 30),
     needs: {MobilityNeed.wheelchair, MobilityNeed.companion},
+    passengers: 2,
     notes: 'Third floor, no lift.',
     pickup: const LatLng(39.92, 32.85),
   );
@@ -186,40 +185,6 @@ Future<void> runFlow() async {
   await staffAuth.signOut();
   await tracking.forget();
   print('Flow finished for $ref');
-
-  // 8. Free buses: empty until a coordinator fills a route in.
-  ShuttleRoute route(ShuttleBranch b) =>
-      shuttleStore.routes.firstWhere((r) => r.branch == b);
-  expect(route(ShuttleBranch.sincan).announced, false,
-      reason: 'no schedule before staff set one');
-  expect(
-      await shuttleStore.save(const ShuttleRoute(
-          branch: ShuttleBranch.sincan,
-          destination: 'Test stop',
-          times: ['08:00'])),
-      false,
-      reason: 'visitors cannot change the free buses');
-
-  expect(await staffAuth.signIn('coordinator@koru.test', 'staff-pass-123'),
-      SignInResult.ok);
-  expect(
-      await shuttleStore.save(ShuttleRoute(
-          branch: ShuttleBranch.sincan,
-          destination: 'Test stop',
-          times: parseTimes('17:45, 8:15')!,
-          frequency: 30)),
-      true);
-  await staffAuth.signOut();
-
-  // A visitor's homepage picks the change up by itself.
-  await waitFor(shuttleStore, () => route(ShuttleBranch.sincan).announced);
-  final sincan = route(ShuttleBranch.sincan);
-  expect(sincan.destination, 'Test stop');
-  expect(sincan.times.join(','), '08:15,17:45');
-  expect(sincan.frequency, 30);
-  expect(route(ShuttleBranch.cukurambar).announced, false);
-  expect(route(ShuttleBranch.kavaklidere).announced, false);
-  print('Free bus routes OK');
 }
 
 Future<void> main() async {

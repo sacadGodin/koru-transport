@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/bookings.dart';
+import '../data/staff_auth.dart';
 import '../lang.dart';
 import '../theme.dart';
 import 'color_picker.dart';
@@ -49,13 +50,12 @@ class Logo extends StatelessWidget {
 }
 
 // The links in the top menu.
-enum NavItem { book, track, shuttle, directions, drivers, feedback, contact }
+enum NavItem { book, track, directions, drivers, feedback, contact }
 
 extension NavItemText on NavItem {
   String label(BuildContext context) => switch (this) {
         NavItem.book => context.t('Book', 'Rezervasyon'),
         NavItem.track => context.t('Track ride', 'Takip'),
-        NavItem.shuttle => context.t('Free bus', 'Ücretsiz servis'),
         NavItem.directions => context.t('Directions', 'Yol tarifi'),
         NavItem.drivers => context.t('Our drivers', 'Sürücülerimiz'),
         NavItem.feedback => context.t('Feedback', 'Görüşler'),
@@ -64,8 +64,8 @@ extension NavItemText on NavItem {
 }
 
 // Opens a menu link.
-// "Book", "Track ride", "Feedback" and "Contact" are their own pages. Shuttle, Directions
-// and Our drivers are parts of the homepage: if we are on the homepage,
+// "Book", "Track ride", "Feedback" and "Contact" are their own pages. Directions and
+// Our drivers are parts of the homepage: if we are on the homepage,
 // [onAnchor] scrolls to them; otherwise we open the homepage and tell it
 // which part to scroll to.
 void openNavItem(
@@ -79,11 +79,11 @@ void openNavItem(
       Navigator.pushNamed(context, '/feedback');
     case NavItem.contact:
       Navigator.pushNamed(context, '/contact');
-    case NavItem.shuttle || NavItem.directions || NavItem.drivers:
+    case NavItem.directions || NavItem.drivers:
       if (onAnchor != null) {
         onAnchor(item.name);
       } else {
-        Navigator.pushNamedAndRemoveUntil(context, '/', (_) => false,
+        Navigator.pushNamedAndRemoveUntil(context, '/home', (_) => false,
             arguments: item.name);
       }
   }
@@ -149,7 +149,7 @@ class SiteHeader extends StatelessWidget implements PreferredSizeWidget {
               // Clicking the logo opens the homepage.
               InkWell(
                 onTap: () => Navigator.pushNamedAndRemoveUntil(
-                    context, '/', (_) => false),
+                    context, '/home', (_) => false),
                 child: const Logo(),
               ),
               const Spacer(),
@@ -159,17 +159,19 @@ class SiteHeader extends StatelessWidget implements PreferredSizeWidget {
               // Palette button: change the site's main color.
               const ColorPickerButton(),
               const SizedBox(width: 4),
-              const _LangSwitch(),
+              const LangSwitch(),
               // Call button (hidden on phones to save space).
               if (!mobile) ...[
                 const SizedBox(width: 10),
                 FilledButton(
-                  onPressed: () => openLink('tel:${ContactInfo.phone}'),
+                  onPressed: () => openLink('tel:${ContactInfo.phoneLink}'),
                   style: FilledButton.styleFrom(shape: const StadiumBorder()),
                   child: Text(context.t(
                       'Call ${ContactInfo.phone}', 'Ara ${ContactInfo.phone}')),
                 ),
               ],
+              const SizedBox(width: 4),
+              const _AccountMenu(),
               // Small screens: menu button that lists the links.
               if (compact)
                 PopupMenuButton<NavItem>(
@@ -186,6 +188,47 @@ class SiteHeader extends StatelessWidget implements PreferredSizeWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// Account button for whoever is signed in: opens their dashboard (admins
+// and drivers) or signs out, back to the sign-in page.
+class _AccountMenu extends StatelessWidget {
+  const _AccountMenu();
+
+  @override
+  Widget build(BuildContext context) {
+    final dashboard = staffAuth.isAdmin
+        ? ('/admin', context.t('Admin dashboard', 'Yönetici paneli'))
+        : staffAuth.isDriver
+            ? ('/driver', context.t('Driver dashboard', 'Sürücü paneli'))
+            : null;
+    return PopupMenuButton<String>(
+      tooltip: context.t('Account', 'Hesap'),
+      icon: Icon(Icons.account_circle_outlined, color: AppColors.blue),
+      onSelected: (route) async {
+        if (route == '/') await staffAuth.signOut();
+        if (!context.mounted) return;
+        Navigator.pushNamedAndRemoveUntil(context, route, (_) => false);
+      },
+      itemBuilder: (context) => [
+        if (dashboard != null)
+          PopupMenuItem(
+            value: dashboard.$1,
+            child: ListTile(
+                leading: const Icon(Icons.dashboard_outlined),
+                title: Text(dashboard.$2),
+                contentPadding: EdgeInsets.zero),
+          ),
+        PopupMenuItem(
+          value: '/',
+          child: ListTile(
+              leading: const Icon(Icons.logout),
+              title: Text(context.t('Sign out', 'Çıkış yap')),
+              contentPadding: EdgeInsets.zero),
+        ),
+      ],
     );
   }
 }
@@ -230,9 +273,9 @@ class _PillNav extends StatelessWidget {
 }
 
 // Language button: shows the current language code (e.g. "TR") and opens
-// a menu with all languages.
-class _LangSwitch extends StatelessWidget {
-  const _LangSwitch();
+// a menu with all languages. Also used on the sign-in page.
+class LangSwitch extends StatelessWidget {
+  const LangSwitch({super.key});
 
   @override
   Widget build(BuildContext context) {

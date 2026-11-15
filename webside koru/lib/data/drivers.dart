@@ -2,10 +2,8 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
-import '../firebase_options.dart';
 import 'staff_auth.dart';
 
 // One driver account (drivers/{uid} in Firestore).
@@ -73,7 +71,7 @@ class DriverStore extends ChangeNotifier {
   }) async {
     final String uid;
     try {
-      uid = await _createAccount(email, password);
+      uid = await staffAuth.createAccount(email, password);
     } on FirebaseAuthException catch (e) {
       debugPrint('Creating driver account failed: ${e.code}');
       return switch (e.code) {
@@ -142,30 +140,6 @@ class DriverStore extends ChangeNotifier {
       debugPrint('Saving driver $uid failed: $e');
       return 'unknown';
     }
-  }
-
-  // Makes a new email + password account without signing the coordinator
-  // out: it signs up through a second copy of Firebase that only lives
-  // for this, then signs that copy out again.
-  Future<String> _createAccount(String email, String password) async {
-    final auth = await (_signUpAuth ??= _openSignUpAuth());
-    final cred = await auth.createUserWithEmailAndPassword(
-        email: email, password: password);
-    await auth.signOut();
-    return cred.user!.uid;
-  }
-
-  Future<FirebaseAuth>? _signUpAuth;
-
-  static Future<FirebaseAuth> _openSignUpAuth() async {
-    final app = await Firebase.initializeApp(
-        name: 'driver-sign-up',
-        options: DefaultFirebaseOptions.currentPlatform);
-    final auth = FirebaseAuth.instanceFor(app: app);
-    if (const bool.fromEnvironment('USE_EMULATORS')) {
-      await auth.useAuthEmulator('localhost', 9099);
-    }
-    return auth;
   }
 
   // Switches a driver on or off.

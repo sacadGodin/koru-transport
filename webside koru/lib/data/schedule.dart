@@ -54,7 +54,8 @@ class Slot {
                   : SlotStatus.available;
 
   // Whether a patient can still pick this slot.
-  bool get open => status == SlotStatus.available || status == SlotStatus.booked;
+  bool get open =>
+      status == SlotStatus.available || status == SlotStatus.booked;
 }
 
 // The 24 slots of a day, live from the "slots" collection, plus the
@@ -141,10 +142,10 @@ final scheduleStore = ScheduleStore();
 
 // Open slots on the same day, nearest to [hour] first (for "this time is
 // fully booked, how about...").
-List<Slot> alternativesFor(List<Slot> day, int hour, {int max = 4}) =>
-    (day.where((s) => s.open && s.hour != hour).toList()
-          ..sort((a, b) =>
-              (a.hour - hour).abs().compareTo((b.hour - hour).abs())))
-        .take(max)
+List<Slot> alternativesFor(List<Slot> day, int hour, {int max = 4}) => (day
+        .where((s) => s.open && s.hour != hour)
         .toList()
-      ..sort((a, b) => a.hour.compareTo(b.hour));
+      ..sort((a, b) => (a.hour - hour).abs().compareTo((b.hour - hour).abs())))
+    .take(max)
+    .toList()
+  ..sort((a, b) => a.hour.compareTo(b.hour));

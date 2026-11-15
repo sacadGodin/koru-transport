@@ -47,6 +47,8 @@ class _BookingPageState extends State<BookingPage> {
   final _phone = TextEditingController();
   final _notes = TextEditingController();
   final Set<MobilityNeed> _needs = {};
+  // People riding, the patient included.
+  int _passengers = 1;
 
   // Step 3 answers.
   final _step3Key = GlobalKey<FormState>();
@@ -81,11 +83,26 @@ class _BookingPageState extends State<BookingPage> {
     final draft = ModalRoute.of(context)?.settings.arguments;
     if (draft is BookingDraft) {
       _type = draft.type;
-      _from.text = draft.from ?? '';
-      _branch = draft.branch ?? _branch;
+      _from.text = draft.from ?? _presetFrom(draft.type);
+      // Koru Hotel rides go to the hotel unless a destination was chosen.
+      _branch = draft.branch ??
+          (_type == TransportType.wheelchair ? hotelName : _branch);
+      if (!_destinationsFor(_type).contains(_branch)) _branch = branches.first;
       _date = draft.date;
     }
   }
+
+  // Where a ride can go (or, to the airport, start from): the branches, plus
+  // Koru Hotel for every ride except to the airport (whose pickup is a
+  // branch).
+  static List<String> _destinationsFor(TransportType? type) =>
+      type == TransportType.toAirport ? branches : destinations;
+
+  // The airport, filled in as the destination of rides to it.
+  static String _presetFrom(TransportType? type) => switch (type) {
+        TransportType.toAirport => airportName,
+        _ => '',
+      };
 
   @override
   void dispose() {
@@ -135,8 +152,10 @@ class _BookingPageState extends State<BookingPage> {
         date: _date!,
         time: _time!,
         needs: {..._needs},
+        passengers: _passengers,
         notes: _notes.text.trim(),
-        pickup: _pickup,
+        // A map point is only tapped for pickups away from the hospital.
+        pickup: _type!.fromHospital ? null : _pickup,
       );
     } on SlotFullException {
       // Someone took the last place first. The slot list shows the slot as
@@ -178,6 +197,7 @@ class _BookingPageState extends State<BookingPage> {
       _step = 0;
       _type = null;
       _needs.clear();
+      _passengers = 1;
       _branch = branches.first;
       _pickup = null;
       _date = null;
@@ -346,7 +366,7 @@ class _BookingPageState extends State<BookingPage> {
     );
   }
 
-  // Step 1: four selectable transport type cards.
+  // Step 1: selectable transport type cards.
   Widget _stepType() {
     // Short description under each type.
     String description(TransportType type) => switch (type) {
@@ -354,14 +374,17 @@ class _BookingPageState extends State<BookingPage> {
               'Stretcher transfer with medical staff.',
               'Sağlık personeli eşliğinde sedyeli transfer.'),
           TransportType.wheelchair => context.t(
-              'Ramp or lift, room for a companion.',
-              'Rampa veya lift, refakatçi için yer.'),
+              'Rides between Koru Hotel and the hospital.',
+              'Koru Otel ile hastane arasında ulaşım.'),
           TransportType.standard => context.t(
               'For patients who can walk on their own.',
               'Kendi başına yürüyebilen hastalar için.'),
           TransportType.airport => context.t(
               'Meet at arrivals, drive to the hospital or hotel.',
               'Gelen yolcu çıkışında karşılama, hastane veya otele transfer.'),
+          TransportType.toAirport => context.t(
+              'Pickup at the hospital, drive to $airportName for your flight.',
+              'Hastaneden alınış, uçuşunuz için $airportName transferi.'),
         };
 
     return Column(
@@ -371,17 +394,36 @@ class _BookingPageState extends State<BookingPage> {
           desktopColumns: 2,
           spacing: 14,
           children: [
+            // Ambulance is not offered here, unless the homepage booking
+            // bar or a service card already chose it.
             for (final type in TransportType.values)
-              _SelectCard(
-                selected: _type == type,
-                icon: type.icon,
-                title: type.label(context),
-                body: description(type),
-                onTap: () => setState(() {
-                  _type = type;
-                  _showErrors = false;
-                }),
-              ),
+              if (type != TransportType.ambulance || _type == type)
+                _SelectCard(
+                  selected: _type == type,
+                  icon: type.icon,
+                  title: type.label(context),
+                  body: description(type),
+                  onTap: () => setState(() {
+                    // Fill in the airport for rides to it (and clear it, or
+                    // an older "Koru Hotel", when another type is chosen).
+                    final preset = _presetFrom(type);
+                    final current = _from.text.trim();
+                    if (current.isEmpty ||
+                        current == airportName ||
+                        current == hotelName) {
+                      _from.text = preset;
+                    }
+                    // Keep the destination one this ride can go to.
+                    if (type == TransportType.wheelchair) {
+                      // Koru Hotel rides: the destination is the hotel.
+                      _branch = hotelName;
+                    } else if (!_destinationsFor(type).contains(_branch)) {
+                      _branch = branches.first;
+                    }
+                    _type = type;
+                    _showErrors = false;
+                  }),
+                ),
           ],
         ),
         // Error when "Next" is pressed without choosing.
@@ -396,7 +438,7 @@ class _BookingPageState extends State<BookingPage> {
     );
   }
 
-  // Step 2: patient name, phone, mobility needs and notes.
+  // Step 2: patient name, phone, number of people, mobility needs and notes.
   Widget _stepPatient() {
     return Form(
       key: _step2Key,
@@ -420,13 +462,43 @@ class _BookingPageState extends State<BookingPage> {
           ),
           const SizedBox(height: 20),
           FieldLabel(
+            context.t('Number of people (patient included)',
+                'Kişi sayısı (hasta dahil)'),
+            // - and + buttons around the count.
+            child: Row(
+              children: [
+                IconButton.outlined(
+                  icon: const Icon(Icons.remove),
+                  tooltip: context.t('Fewer people', 'Daha az kişi'),
+                  onPressed: _passengers > 1
+                      ? () => setState(() => _passengers--)
+                      : null,
+                ),
+                SizedBox(
+                  width: 48,
+                  child: Text('$_passengers',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleLarge),
+                ),
+                IconButton.outlined(
+                  icon: const Icon(Icons.add),
+                  tooltip: context.t('More people', 'Daha fazla kişi'),
+                  onPressed: _passengers < maxPassengers
+                      ? () => setState(() => _passengers++)
+                      : null,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          FieldLabel(
             context.t('Mobility needs', 'Hareket ihtiyaçları'),
             // Chips the user can switch on and off.
             child: Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                for (final need in MobilityNeed.values)
+                for (final need in offeredNeeds)
                   FilterChip(
                     label: Text(need.label(context)),
                     selected: _needs.contains(need),
@@ -452,37 +524,100 @@ class _BookingPageState extends State<BookingPage> {
     final error = Theme.of(context).colorScheme.error;
     final mustPick = context.t('Required', 'Zorunlu alan');
 
+    final toAirport = _type?.fromHospital ?? false;
+
     return Form(
       key: _step3Key,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          FieldLabel(
-            context.t('Pickup address', 'Alınış adresi'),
-            child: TextFormField(
-                controller: _from,
-                validator: _required,
-                onChanged: (_) => setState(() {})),
-          ),
-          const SizedBox(height: 16),
-          FieldLabel(
-            context.t('Destination branch', 'Gidilecek şube'),
-            child: DropdownButtonFormField<String>(
-              initialValue: _branch,
-              items: [
-                for (final b in branches)
-                  DropdownMenuItem(value: b, child: Text(b)),
-              ],
-              onChanged: (v) => setState(() => _branch = v!),
+          if (toAirport) ...[
+            // Hospital -> airport: the branch is the pickup.
+            FieldLabel(
+              context.t('Pickup branch', 'Alınış şubesi'),
+              child: DropdownButtonFormField<String>(
+                initialValue: _branch,
+                items: [
+                  for (final b in branches)
+                    DropdownMenuItem(value: b, child: Text(b)),
+                ],
+                onChanged: (v) => setState(() => _branch = v!),
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          // Map of the trip: tap to set the pickup point.
-          RouteMap(
-            destination: branchLocation(_branch),
-            pickup: _pickup,
-            onPickupChanged: (p) => setState(() => _pickup = p),
-          ),
+            const SizedBox(height: 16),
+            FieldLabel(
+              context.t('Airport / terminal', 'Havalimanı / terminal'),
+              child: TextFormField(
+                  controller: _from,
+                  validator: _required,
+                  onChanged: (_) => setState(() {})),
+            ),
+            const SizedBox(height: 6),
+            Text(
+                context.t(
+                    'Tip: write your flight number and departure time in the '
+                        'notes, and choose a pickup time at least 3 hours '
+                        'before the flight.',
+                    'İpucu: uçuş numaranızı ve kalkış saatinizi notlara '
+                        'yazın, alınış saatini uçuştan en az 3 saat önce '
+                        'seçin.'),
+                style: const TextStyle(color: AppColors.muted, fontSize: 13)),
+            const SizedBox(height: 16),
+            RouteMap(
+              destination: airportLocation,
+              pickup: branchLocation(_branch),
+              destinationIcon: Icons.flight,
+              pickupIcon: Icons.local_hospital,
+            ),
+          ] else ...[
+            FieldLabel(
+              context.t('Pickup address', 'Alınış adresi'),
+              child: TextFormField(
+                  controller: _from,
+                  validator: _required,
+                  onChanged: (_) => setState(() {})),
+            ),
+            const SizedBox(height: 16),
+            FieldLabel(
+              context.t('Destination', 'Gidilecek yer'),
+              child: DropdownButtonFormField<String>(
+                initialValue: _branch,
+                items: [
+                  for (final b in _destinationsFor(_type))
+                    DropdownMenuItem(value: b, child: Text(b)),
+                ],
+                validator: (v) => v == _from.text.trim()
+                    ? context.t(
+                        'The destination cannot be the same as the pickup.',
+                        'Gidilecek yer alınış adresiyle aynı olamaz.')
+                    : null,
+                onChanged: (v) => setState(() {
+                  _branch = v!;
+                  // Going to the hotel: the pickup is no longer the hotel,
+                  // so the patient writes where to be picked up.
+                  if (v == hotelName && _from.text.trim() == hotelName) {
+                    _from.clear();
+                    _pickup = null;
+                  }
+                }),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Map of the trip: tap to set the pickup point.
+            RouteMap(
+              destination: branchLocation(_branch),
+              // Pickup at the hotel shows the hotel until a point is tapped.
+              pickup: _pickup ??
+                  (_from.text.trim() == hotelName
+                      ? branchLocation(hotelName)
+                      : null),
+              destinationIcon: placeIcon(_branch),
+              pickupIcon: _pickup == null && _from.text.trim() == hotelName
+                  ? Icons.hotel
+                  : Icons.location_on,
+              onPickupChanged: (p) => setState(() => _pickup = p),
+            ),
+          ],
           const SizedBox(height: 16),
           FieldLabel(
             context.t('Date', 'Tarih'),
@@ -559,12 +694,18 @@ class _BookingPageState extends State<BookingPage> {
     final rows = [
       (context.t('Transport', 'Ulaşım'), _type?.label(context)),
       (context.t('Patient', 'Hasta'), _patient.text.trim()),
+      (context.t('People', 'Kişi sayısı'), '$_passengers'),
       (
         context.t('Needs', 'İhtiyaçlar'),
         _needs.map((n) => n.label(context)).join(', ')
       ),
-      (context.t('From', 'Nereden'), _from.text.trim()),
-      (context.t('To', 'Nereye'), _branch),
+      if (_type?.fromHospital ?? false) ...[
+        (context.t('From', 'Nereden'), _branch),
+        (context.t('To', 'Nereye'), _from.text.trim()),
+      ] else ...[
+        (context.t('From', 'Nereden'), _from.text.trim()),
+        (context.t('To', 'Nereye'), _branch),
+      ],
       (context.t('Date', 'Tarih'), _date == null ? null : formatDate(_date!)),
       (context.t('Time', 'Saat'), _time == null ? null : formatTime(_time!)),
     ];
@@ -680,7 +821,7 @@ class _BookingPageState extends State<BookingPage> {
               ),
               OutlinedButton(
                 onPressed: () => Navigator.pushNamedAndRemoveUntil(
-                    context, '/', (_) => false),
+                    context, '/home', (_) => false),
                 child: Text(context.t('Back to homepage', 'Ana sayfaya dön')),
               ),
               OutlinedButton(

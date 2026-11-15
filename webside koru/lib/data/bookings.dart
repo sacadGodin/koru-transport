@@ -13,10 +13,14 @@ import 'staff_auth.dart';
 // Contact details used across the site.
 // Replace the [PLACEHOLDERS] with the hospital's real details.
 class ContactInfo {
-  static const phone = '[PHONE]';
-  static const whatsapp = '[WHATSAPP NUMBER]';
-  static const email = '[EMAIL]';
+  static const phone = '+90 535 106 74 45';
+  static const whatsapp = '+90 535 106 74 45';
+  static const email = 'denizcanalantor@koruhastanesi.com';
   static const address = '[ADDRESS]';
+
+  // Numbers without spaces, for tel: and wa.me links.
+  static String get phoneLink => phone.replaceAll(' ', '');
+  static String get whatsappLink => whatsapp.replaceAll(RegExp(r'[^0-9]'), '');
 }
 
 // Hospital branches (used in dropdowns, the branch finder and contact page).
@@ -29,9 +33,15 @@ const branches = [
 // Where each branch is on the map (latitude, longitude).
 // TODO: replace these placeholder points with each branch's real location.
 const branchLocations = {
-  'Koru Hospital Çukurambar': LatLng(39.9208, 32.8541),
-  'Koru Hospital Sincan': LatLng(39.8890, 32.6640),
-  'Koru Hospital Kavaklıdere': LatLng(39.9700, 32.5800),
+  // Kızılırmak Mah. 1450. Sk. No:13, Çankaya.
+  'Koru Hospital Çukurambar': LatLng(39.9093, 32.8098),
+  // Akşemsettin Mah. Huzur Sk. No:1, Sincan.
+  'Koru Hospital Sincan': LatLng(39.9686, 32.5826),
+  // Kavaklıdere neighbourhood centre; replace with the exact building.
+  'Koru Hospital Kavaklıdere': LatLng(39.9050, 32.8600),
+  // Koru Hotel Bolu (bolukoruhotels.com): D100 Karayolu üzeri, Otel Sokak
+  // No:19, Yeşilköy Mevki / Bolu. Point from OpenStreetMap.
+  hotelName: LatLng(40.7240, 31.4383),
 };
 
 // Photo of each branch building in assets/images/ (branches without one
@@ -42,35 +52,79 @@ const branchPhotos = {
   'Koru Hospital Kavaklıdere': 'assets/images/koru_kavaklidere.jpg',
 };
 
+// Map pin icon of a place: hotel, airport or hospital.
+IconData placeIcon(String place) => place == hotelName
+    ? Icons.hotel
+    : place == airportName
+        ? Icons.flight
+        : Icons.local_hospital;
+
 // Map point of a branch (Ankara city centre if the branch has no point yet).
 LatLng branchLocation(String branch) =>
     branchLocations[branch] ?? const LatLng(39.9334, 32.8597);
 
-// The 4 kinds of transport a patient can book.
-enum TransportType { ambulance, wheelchair, standard, airport }
+// The hotel the "Koru Hotel" rides start from (Koru Hotel Bolu,
+// bolukoruhotels.com, about 200 km from Ankara).
+const hotelName = 'Koru Hotel';
+
+// Where a ride to the hospital side can end: a hospital branch or the hotel.
+// (Saved in the booking's "branch" field.)
+const destinations = [...branches, hotelName];
+
+// The airport the airport rides go to and from (Ankara Esenboğa).
+const airportName = 'Esenboğa Airport (ESB)';
+const airportLocation = LatLng(40.1281, 32.9951);
+
+// The kinds of transport a patient can book. "wheelchair" is shown as
+// "Koru Hotel transfer" (the saved name stays "wheelchair" so older bookings
+// and the Firestore rules keep working). "airport" brings the patient
+// from the airport to the hospital; "toAirport" takes them from a hospital
+// branch to the airport.
+enum TransportType { ambulance, wheelchair, standard, airport, toAirport }
 
 extension TransportTypeText on TransportType {
   // Name shown to the user, in the current language.
   String label(BuildContext context) => switch (this) {
         TransportType.ambulance => context.t('Ambulance', 'Ambulans'),
         TransportType.wheelchair =>
-          context.t('Wheelchair vehicle', 'Engelli aracı'),
+          context.t('Koru Hotel transfer', 'Koru Otel transferi'),
         TransportType.standard => context.t('Standard car', 'Standart araç'),
         TransportType.airport =>
-          context.t('Airport transfer', 'Havalimanı transferi'),
+          context.t('Airport → hospital', 'Havalimanı → hastane'),
+        TransportType.toAirport =>
+          context.t('Hospital → airport', 'Hastane → havalimanı'),
       };
+
+  // Rides that start at the hospital branch and end somewhere else.
+  bool get fromHospital => this == TransportType.toAirport;
 
   // Icon shown on cards and in tables.
   IconData get icon => switch (this) {
         TransportType.ambulance => Icons.local_hospital_outlined,
-        TransportType.wheelchair => Icons.accessible,
+        TransportType.wheelchair => Icons.hotel_outlined,
         TransportType.standard => Icons.directions_car_outlined,
         TransportType.airport => Icons.flight_land,
+        TransportType.toAirport => Icons.flight_takeoff,
       };
 }
 
+// Most people one booking can carry, the patient included (the same limit
+// is in firestore.rules).
+const maxPassengers = 8;
+
 // Extra help the patient may need during the ride.
-enum MobilityNeed { wheelchair, stretcher, oxygen, companion }
+// "wheelchair" is no longer offered; it stays only so older bookings that
+// have it still load.
+enum MobilityNeed { wheelchair, stretcher, oxygen, companion, luggage, other }
+
+// The needs a patient can choose on the booking form.
+const offeredNeeds = [
+  MobilityNeed.stretcher,
+  MobilityNeed.oxygen,
+  MobilityNeed.companion,
+  MobilityNeed.luggage,
+  MobilityNeed.other,
+];
 
 extension MobilityNeedText on MobilityNeed {
   String label(BuildContext context) => switch (this) {
@@ -79,6 +133,8 @@ extension MobilityNeedText on MobilityNeed {
         MobilityNeed.stretcher => context.t('Stretcher', 'Sedye'),
         MobilityNeed.oxygen => context.t('Oxygen', 'Oksijen'),
         MobilityNeed.companion => context.t('Companion', 'Refakatçi'),
+        MobilityNeed.luggage => context.t('Luggage', 'Bagaj'),
+        MobilityNeed.other => context.t('Other', 'Diğer'),
       };
 }
 
@@ -161,12 +217,20 @@ class SlotFullException implements Exception {
 enum TripStatus { assigned, enRoute, arrived, onBoard, completed }
 
 extension TripStatusText on TripStatus {
-  String label(BuildContext context) => switch (this) {
+  // [type] and [destination] (the booking's branch) pick the right words
+  // for rides to the airport or the hotel.
+  String label(BuildContext context,
+          [TransportType? type, String? destination]) =>
+      switch (this) {
         TripStatus.assigned => context.t('Driver assigned', 'Sürücü atandı'),
         TripStatus.enRoute => context.t('Driver on the way', 'Sürücü yolda'),
         TripStatus.arrived => context.t('Driver has arrived', 'Sürücü geldi'),
-        TripStatus.onBoard =>
-          context.t('On the way to the hospital', 'Hastaneye gidiliyor'),
+        TripStatus.onBoard => type == TransportType.toAirport
+            ? context.t('On the way to the airport', 'Havalimanına gidiliyor')
+            : destination == hotelName
+                ? context.t('On the way to the hotel', 'Otele gidiliyor')
+                : context.t(
+                    'On the way to the hospital', 'Hastaneye gidiliyor'),
         TripStatus.completed =>
           context.t('Trip completed', 'Yolculuk tamamlandı'),
       };
@@ -209,6 +273,7 @@ class Booking {
     required this.date,
     required this.time,
     this.needs = const {},
+    this.passengers = 1,
     this.notes = '',
     this.pickup,
     this.stage = Stage.newRequest,
@@ -218,9 +283,15 @@ class Booking {
   final String ref;
   final String patient;
   final String phone;
+  // The end of the ride away from the hospital: the pickup address, or for
+  // "toAirport" rides the airport they go to.
   final String from;
+  // The hospital branch: where the ride ends, or for "toAirport" rides
+  // where it starts.
   final String branch;
   final Set<MobilityNeed> needs;
+  // People riding, the patient included (1 to maxPassengers).
+  final int passengers;
   final String notes;
   // Pickup point the patient tapped on the map (null if not set).
   final LatLng? pickup;
@@ -247,6 +318,23 @@ class Booking {
   // When the patient sent the request.
   DateTime? createdAt;
 
+  // Where the ride starts and ends, in the direction it goes.
+  String get start => type.fromHospital ? branch : from;
+  String get end => type.fromHospital ? from : branch;
+  String get route => '$start → $end';
+  // The pin icons for the start and the end.
+  IconData get startIcon => start == hotelName
+      ? Icons.hotel
+      : (type.fromHospital ? Icons.local_hospital : Icons.location_on);
+  IconData get endIcon => type.fromHospital ? Icons.flight : placeIcon(branch);
+
+  // Map points: the ride's start (null if unknown) and its end.
+  LatLng? get startPoint => type.fromHospital
+      ? branchLocation(branch)
+      : pickup ?? (from == hotelName ? branchLocation(hotelName) : null);
+  LatLng get endPoint =>
+      type.fromHospital ? airportLocation : branchLocation(branch);
+
   // Same booking with the same values (to change a copy before saving).
   Booking copy() => Booking(
         ref: ref,
@@ -258,6 +346,7 @@ class Booking {
         date: date,
         time: time,
         needs: needs,
+        passengers: passengers,
         notes: notes,
         pickup: pickup,
         stage: stage,
@@ -447,6 +536,7 @@ class BookingStore extends ChangeNotifier {
     required DateTime date,
     required TimeOfDay time,
     required Set<MobilityNeed> needs,
+    required int passengers,
     required String notes,
     LatLng? pickup,
   }) async {
@@ -464,6 +554,7 @@ class BookingStore extends ChangeNotifier {
         date: date,
         time: time,
         needs: needs,
+        passengers: passengers,
         notes: notes,
         pickup: pickup,
       )..trackingId = trackingIdFor('KR-$n', code);
@@ -568,8 +659,8 @@ class BookingStore extends ChangeNotifier {
       await FirebaseFirestore.instance.runTransaction((tx) async {
         // The slot as saved now (another coordinator may have changed it).
         final saved = await tx.get(_db.doc(b.ref));
-        final moveSlot = await _moveSlot(
-            tx, saved.data()?['slot'] as String?, slot, b.ref);
+        final moveSlot =
+            await _moveSlot(tx, saved.data()?['slot'] as String?, slot, b.ref);
         tx.update(_db.doc(b.ref), {..._toDoc(b), 'slot': slot});
         if (b.trackingId != null) {
           tx.set(_tracking.doc(b.trackingId), _trackingDoc(b));
@@ -617,6 +708,7 @@ class BookingStore extends ChangeNotifier {
         'date': Timestamp.fromDate(b.date),
         'time': formatTime(b.time),
         'needs': [for (final n in b.needs) n.name],
+        'passengers': b.passengers,
         'notes': b.notes,
         'pickup': b.pickup == null
             ? null
@@ -648,6 +740,7 @@ class BookingStore extends ChangeNotifier {
         for (final n in (d['needs'] as List? ?? []))
           MobilityNeed.values.byName(n as String)
       },
+      passengers: d['passengers'] as int? ?? 1,
       notes: d['notes'] as String? ?? '',
       pickup: pickup == null ? null : LatLng(pickup.latitude, pickup.longitude),
       stage: Stage.values.byName(d['stage'] as String),

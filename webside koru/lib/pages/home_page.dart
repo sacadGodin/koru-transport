@@ -6,15 +6,14 @@ import 'package:flutter/material.dart';
 
 import '../data/bookings.dart';
 import '../data/feedback.dart';
-import '../data/shuttles.dart';
 import '../lang.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/site_layout.dart';
 import 'booking_page.dart';
 
-// Homepage: hero + booking bar, transport services, next shuttles,
-// patient comments, branch finder and our drivers.
+// Homepage: hero + booking bar, transport services, patient comments,
+// branch finder and our drivers.
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -25,7 +24,6 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   // One key per homepage part the menu can scroll to.
   final _anchors = {
-    'shuttle': GlobalKey(),
     'directions': GlobalKey(),
     'drivers': GlobalKey(),
   };
@@ -33,7 +31,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    // If another page sent us here with a part name (e.g. "shuttle"),
+    // If another page sent us here with a part name (e.g. "drivers"),
     // scroll to it once the page is drawn.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final anchor = ModalRoute.of(context)?.settings.arguments;
@@ -57,7 +55,6 @@ class _HomePageState extends State<HomePage> {
       children: [
         const _Hero(),
         const _Services(),
-        _Shuttles(key: _anchors['shuttle']),
         const _PatientComments(),
         _BranchFinder(key: _anchors['directions']),
         _Drivers(key: _anchors['drivers']),
@@ -133,11 +130,10 @@ class _Hero extends StatelessWidget {
           constraints: const BoxConstraints(maxWidth: 520),
           child: Text(
             context.t(
-                'Ambulance transfers, accessible vehicles, free buses and '
-                    'airport pickups for Koru Hospital patients and visitors.',
+                'Ambulance transfers, Koru Hotel rides and airport pickups '
+                    'for Koru Hospital patients and visitors.',
                 'Koru Hastanesi hastaları ve ziyaretçileri için ambulans '
-                    'transferi, engelli erişimli araçlar, ücretsiz servisler '
-                    've havalimanı karşılama.'),
+                    'transferi, Koru Otel ulaşımı ve havalimanı karşılama.'),
             style: const TextStyle(
                 fontSize: 19, height: 1.6, color: AppColors.muted),
           ),
@@ -165,10 +161,9 @@ class _Hero extends StatelessWidget {
                 Expanded(child: photo),
               ],
             ),
-          // On wide screens the booking bar overlaps the bottom of the
-          // photo by 40 px, like on travel websites.
+          // The booking bar sits just below the photo.
           Transform.translate(
-            offset: Offset(0, tablet ? 20 : -40),
+            offset: Offset(0, tablet ? 20 : 24),
             child: Align(
               alignment: Alignment.centerLeft,
               child: ConstrainedBox(
@@ -314,7 +309,7 @@ class _BookingBarState extends State<_BookingBar> {
           initialValue: _branch,
           isExpanded: true,
           items: [
-            for (final b in branches)
+            for (final b in destinations)
               DropdownMenuItem(value: b, child: Text(b)),
           ],
           onChanged: (v) => setState(() => _branch = v!),
@@ -386,37 +381,16 @@ class _Services extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The same transport types as on the booking page.
     final services = [
       _Service(
-        icon: Icons.flight_land,
-        title: context.t('Airport transfer', 'Havalimanı transferi'),
-        route: context.t(
-            'Airport ⇄ Hotel or Hospital', 'Havalimanı ⇄ Otel veya Hastane'),
+        type: TransportType.wheelchair,
+        route: context.t('$hotelName ⇄ Hospital', 'Koru Otel ⇄ Hastane'),
         body: context.t(
-            'We meet you at arrivals and take you to your hotel or straight to '
-                'your appointment. The same on your way home.',
-            'Sizi gelen yolcu çıkışında karşılar, otelinize veya doğrudan '
-                'randevunuza götürürüz. Dönüşte de aynı şekilde.'),
-        included: [
-          context.t('Driver waiting with your name sign',
-              'İsminizle tabela tutan şoför'),
-          context.t('Flight tracking: on time even if your flight is late',
-              'Uçuş takibi: uçağınız gecikse bile zamanında'),
-          context.t('Help with your luggage', 'Bagaj yardımı'),
-          context.t('Return trip timed to your flight',
-              'Uçuşunuza göre planlanan dönüş'),
-        ],
-        type: TransportType.airport,
-      ),
-      _Service(
-        icon: Icons.hotel_outlined,
-        title: context.t('Hotel–hospital rides', 'Otel–hastane ulaşımı'),
-        route: context.t('Hotel ⇄ Hospital', 'Otel ⇄ Hastane'),
-        body: context.t(
-            'Rides to every check-up, test, surgery and follow-up visit during '
-                'your treatment.',
+            'Rides between Koru Hotel and the hospital for every check-up, '
+                'test, surgery and follow-up visit during your treatment.',
             'Tedaviniz boyunca her kontrol, tetkik, ameliyat ve takip '
-                'randevusuna ulaşım.'),
+                'randevusu için Koru Otel ile hastane arasında ulaşım.'),
         included: [
           context.t('Planned around your appointment times',
               'Randevu saatlerinize göre planlanır'),
@@ -424,49 +398,57 @@ class _Services extends StatelessWidget {
               'Şoför bekler ve sizi geri götürür'),
           context.t('A family member can ride with you',
               'Bir yakınınız sizinle gelebilir'),
-          context.t('Gentle ride back after discharge',
-              'Taburcu sonrası özenli dönüş'),
         ],
+      ),
+      _Service(
         type: TransportType.standard,
+        route: context.t('Your address ⇄ Hospital', 'Adresiniz ⇄ Hastane'),
+        body: context.t(
+            'A comfortable car from your home or any address to the hospital, '
+                'for patients who can walk on their own.',
+            'Kendi başına yürüyebilen hastalar için evinizden veya '
+                'istediğiniz adresten hastaneye konforlu araç.'),
+        included: [
+          context.t('Pickup from any address', 'Her adresten alınış'),
+          context.t('Driver waits and takes you back',
+              'Şoför bekler ve sizi geri götürür'),
+          context.t('A family member can ride with you',
+              'Bir yakınınız sizinle gelebilir'),
+        ],
       ),
       _Service(
-        icon: Icons.local_hospital_outlined,
-        title: context.t('Medical transfer', 'Tıbbi transfer'),
-        route: context.t('For patients who need care on the way',
-            'Yolda bakım gereken hastalar için'),
-        body: context.t(
-            'Vehicles and staff for patients who cannot travel in a normal '
-                'car, before or after treatment.',
-            'Tedavi öncesi veya sonrası normal araçla seyahat edemeyen '
-                'hastalar için araç ve personel.'),
-        included: [
-          context.t('Wheelchair vehicle with ramp',
-              'Rampalı tekerlekli sandalye aracı'),
-          context.t('Stretcher transfer', 'Sedyeli transfer'),
-          context.t('Ambulance with a paramedic', 'Paramedikli ambulans'),
-          context.t('Oxygen and nurse escort on request',
-              'İsteğe bağlı oksijen ve hemşire eşliği'),
-        ],
-        type: TransportType.ambulance,
-      ),
-      _Service(
-        icon: Icons.card_travel,
-        title: context.t('Full treatment package', 'Tam tedavi paketi'),
-        route: context.t('From arrival to departure', 'Varıştan dönüşe kadar'),
-        body: context.t(
-            'Every ride of your stay in one booking: airport, hotel and '
-                'hospital, at one price.',
-            'Konaklamanız boyunca tüm yolculuklar tek rezervasyonda: '
-                'havalimanı, otel ve hastane, tek fiyat.'),
-        included: [
-          context.t('All transfers planned for you',
-              'Tüm transferler sizin için planlanır'),
-          context.t('One personal coordinator', 'Tek bir kişisel koordinatör'),
-          context.t('Driver name, plate and live location on WhatsApp',
-              'WhatsApp ile şoför adı, plaka ve canlı konum'),
-          context.t('Support 24/7', '7/24 destek'),
-        ],
         type: TransportType.airport,
+        route: context.t(
+            'Airport → Hospital or hotel', 'Havalimanı → Hastane veya otel'),
+        body: context.t(
+            'We meet you at arrivals and take you to the hospital or your '
+                'hotel.',
+            'Sizi gelen yolcu çıkışında karşılar, hastaneye veya otelinize '
+                'götürürüz.'),
+        included: [
+          context.t('Driver waiting with your name sign',
+              'İsminizle tabela tutan şoför'),
+          context.t('Flight tracking: on time even if your flight is late',
+              'Uçuş takibi: uçağınız gecikse bile zamanında'),
+          context.t('Help with your luggage', 'Bagaj yardımı'),
+        ],
+      ),
+      _Service(
+        type: TransportType.toAirport,
+        route: context.t(
+            'Hospital → $airportName', 'Hastane → Esenboğa Havalimanı (ESB)'),
+        body: context.t(
+            'We pick you up at the hospital and take you to the airport in '
+                'good time for your flight.',
+            'Sizi hastaneden alır, uçuşunuza zamanında yetişmeniz için '
+                'havalimanına götürürüz.'),
+        included: [
+          context.t(
+              'Pickup timed to your flight', 'Uçuşunuza göre planlanan alınış'),
+          context.t('Help with your luggage', 'Bagaj yardımı'),
+          context.t('Drop-off at the departures door',
+              'Giden yolcu kapısına bırakış'),
+        ],
       ),
     ];
 
@@ -531,22 +513,19 @@ class _Services extends StatelessWidget {
 // What one service card shows.
 class _Service {
   const _Service({
-    required this.icon,
-    required this.title,
     required this.route,
     required this.body,
     required this.included,
     required this.type,
   });
 
-  final IconData icon;
-  final String title;
-  // Short line under the title, e.g. "Airport ⇄ Hotel or Hospital".
+  // Short line under the title, e.g. "Airport → Hospital or hotel".
   final String route;
   final String body;
   // "What's included" list.
   final List<String> included;
-  // Transport type chosen on the booking page when "Book" is tapped.
+  // Transport type chosen on the booking page when "Book" is tapped (also
+  // gives the card its icon and title).
   final TransportType type;
 }
 
@@ -572,10 +551,10 @@ class _ServiceCard extends StatelessWidget {
           CircleAvatar(
             radius: 26,
             backgroundColor: Colors.white,
-            child: Icon(service.icon, color: AppColors.blue, size: 26),
+            child: Icon(service.type.icon, color: AppColors.blue, size: 26),
           ),
           const SizedBox(height: 18),
-          Text(service.title,
+          Text(service.type.label(context),
               style:
                   const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
@@ -611,162 +590,6 @@ class _ServiceCard extends StatelessWidget {
             icon: const Icon(Icons.arrow_forward),
             label: Text(context.t('Book this service', 'Bu hizmeti ayırtın')),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-// "Next free buses": one row per route (set by staff in the admin
-// dashboard) with how often it runs and the next departure time. Routes
-// staff have not filled in yet say "Schedule to be announced".
-class _Shuttles extends StatefulWidget {
-  const _Shuttles({super.key});
-
-  @override
-  State<_Shuttles> createState() => _ShuttlesState();
-}
-
-class _ShuttlesState extends State<_Shuttles> {
-  // Rebuilds every 30 seconds so the next departure moves on by itself.
-  late final Timer _clock;
-
-  @override
-  void initState() {
-    super.initState();
-    _clock =
-        Timer.periodic(const Duration(seconds: 30), (_) => setState(() {}));
-  }
-
-  @override
-  void dispose() {
-    _clock.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final intro = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // "FREE" badge above the heading.
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: AppColors.blueSoft,
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: Text(context.t('FREE', 'ÜCRETSİZ'),
-              style: TextStyle(
-                  color: AppColors.blue,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1)),
-        ),
-        const SizedBox(height: 14),
-        SectionHeading(
-            context.t('Next free buses', 'Sıradaki ücretsiz servisler'),
-            size: 36,
-            subtitle: context.t(
-                'Free for everyone visiting Koru Hospital. Look for the blue '
-                    'bus sign at the main entrance.',
-                'Koru Hastanesi\'ni ziyaret eden herkes için ücretsiz. Ana '
-                    'girişteki mavi servis tabelasını takip edin.')),
-      ],
-    );
-
-    final rows = ListenableBuilder(
-      listenable: shuttleStore,
-      builder: (context, _) => Column(
-        children: [
-          for (final route in shuttleStore.routes) _row(context, route),
-        ],
-      ),
-    );
-
-    return SectionContainer(
-      child: Responsive.isTablet(context)
-          ? Column(children: [intro, const SizedBox(height: 24), rows])
-          : Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(flex: 2, child: intro),
-                const SizedBox(width: 40),
-                Expanded(flex: 3, child: rows),
-              ],
-            ),
-    );
-  }
-
-  Widget _row(BuildContext context, ShuttleRoute route) {
-    final branch = context.t(route.branch.en, route.branch.tr);
-    final next =
-        route.announced ? nextDeparture(route.times, ankaraNow()) : null;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-      decoration: BoxDecoration(
-        border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        children: [
-          // Blue square with the route letter.
-          Container(
-            width: 44,
-            height: 44,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppColors.blue,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Text(route.branch.id,
-                style: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.w800)),
-          ),
-          const SizedBox(width: 14),
-          // Route, then "Free · every N min" or "Schedule to be announced".
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                    route.announced ? '$branch → ${route.destination}' : branch,
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w700)),
-                Text(
-                    route.announced
-                        ? [
-                            context.t('Free', 'Ücretsiz'),
-                            if (route.frequency != null)
-                              context.t('Every ${route.frequency} min',
-                                  'Her ${route.frequency} dk'),
-                          ].join(' · ')
-                        : context.t('Schedule to be announced',
-                            'Sefer saatleri yakında duyurulacak'),
-                    style:
-                        const TextStyle(fontSize: 14, color: AppColors.muted)),
-              ],
-            ),
-          ),
-          // Next departure time (tomorrow's first bus after the last one).
-          if (next != null) ...[
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                    next.tomorrow
-                        ? context.t('Tomorrow', 'Yarın')
-                        : context.t('Next', 'Sıradaki'),
-                    style:
-                        const TextStyle(fontSize: 12, color: AppColors.muted)),
-                Text(next.time,
-                    style: const TextStyle(
-                        fontSize: 20, fontWeight: FontWeight.w800)),
-              ],
-            ),
-          ],
         ],
       ),
     );
@@ -1007,21 +830,27 @@ class _BranchFinderState extends State<_BranchFinder> {
 class _Driver {
   const _Driver({
     required this.name,
+    required this.role,
     required this.since,
     required this.vehicle,
     required this.languages,
+    this.photo,
   });
 
   final String name;
+  // Job title under the name (English, Turkish).
+  final (String, String) role;
   // Year they started driving for Koru.
   final String since;
   // Vehicle they usually drive.
   final TransportType vehicle;
   final String languages;
+  // Photo in assets/images (null = a person icon instead).
+  final String? photo;
 }
 
-// "Our drivers": a card for each Koru Hospital driver with name, years
-// with Koru, vehicle and languages.
+// "Our drivers": a card for each Koru Hospital driver with photo, name,
+// years with Koru, vehicle and languages.
 class _Drivers extends StatelessWidget {
   const _Drivers({super.key});
 
@@ -1029,25 +858,33 @@ class _Drivers extends StatelessWidget {
   // permission).
   static const _drivers = [
     _Driver(
-        name: '[DRIVER 1]',
+        name: 'Mustafa Sevinbi',
+        role: ('Medical Transport Driver', 'Tıbbi Nakil Sürücüsü'),
         since: '[YEAR]',
         vehicle: TransportType.ambulance,
-        languages: '[TR, EN]'),
+        languages: '[TR, EN]',
+        photo: 'assets/images/driver_01.jpg'),
     _Driver(
-        name: '[DRIVER 2]',
+        name: 'Anil Yilmaz',
+        role: ('Hotel Transfer Driver', 'Otel Transfer Sürücüsü'),
         since: '[YEAR]',
         vehicle: TransportType.wheelchair,
-        languages: '[TR, EN]'),
+        languages: '[TR, EN]',
+        photo: 'assets/images/driver_02.jpg'),
     _Driver(
-        name: '[DRIVER 3]',
+        name: 'Emrullah Barug',
+        role: ('Airport Transfer Driver', 'Havalimanı Transfer Sürücüsü'),
         since: '[YEAR]',
         vehicle: TransportType.airport,
-        languages: '[TR, EN]'),
+        languages: '[TR, EN]',
+        photo: 'assets/images/driver_03.jpg'),
     _Driver(
-        name: '[DRIVER 4]',
+        name: 'Erhan Kayadasi',
+        role: ('Patient Transfer Driver', 'Hasta Transfer Sürücüsü'),
         since: '[YEAR]',
         vehicle: TransportType.standard,
-        languages: '[TR, EN]'),
+        languages: '[TR, EN]',
+        photo: 'assets/images/driver_04_web.jpg'),
   ];
 
   @override
@@ -1093,9 +930,33 @@ class _Drivers extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Square photo cropped to head and shoulders.
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: AspectRatio(
+                          aspectRatio: 1,
+                          child: d.photo == null
+                              ? Container(
+                                  color: AppColors.blueSoft,
+                                  child: Icon(Icons.person_outline,
+                                      size: 64, color: AppColors.blue),
+                                )
+                              : Image.asset(d.photo!,
+                                  fit: BoxFit.cover,
+                                  alignment: const Alignment(0, -0.5)),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
                       Text(d.name,
                           style: const TextStyle(
                               fontSize: 18, fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 2),
+                      Text(context.t(d.role.$1, d.role.$2),
+                          style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.blue)),
+                      const SizedBox(height: 6),
                       detail(
                           Icons.badge_outlined,
                           context.t('With Koru since ${d.since}',

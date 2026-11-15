@@ -1,10 +1,39 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
+import '../lang.dart';
 import 'bookings.dart';
 import 'staff_auth.dart';
+
+// Parts of the service a patient can say their comment is about.
+enum FeedbackAspect { punctuality, driver, vehicle, safety, booking, assistance }
+
+extension FeedbackAspectText on FeedbackAspect {
+  String label(BuildContext context) => switch (this) {
+        FeedbackAspect.punctuality =>
+          context.t('Punctuality', 'Zamanında gelme'),
+        FeedbackAspect.driver =>
+          context.t('Driver courtesy', 'Sürücünün nezaketi'),
+        FeedbackAspect.vehicle =>
+          context.t('Vehicle comfort & cleanliness', 'Araç konforu ve temizliği'),
+        FeedbackAspect.safety => context.t('Safe driving', 'Güvenli sürüş'),
+        FeedbackAspect.booking =>
+          context.t('Booking & communication', 'Rezervasyon ve iletişim'),
+        FeedbackAspect.assistance =>
+          context.t('Help getting in and out', 'Binerken ve inerken yardım'),
+      };
+
+  IconData get icon => switch (this) {
+        FeedbackAspect.punctuality => Icons.schedule,
+        FeedbackAspect.driver => Icons.emoji_people_outlined,
+        FeedbackAspect.vehicle => Icons.airline_seat_recline_extra_outlined,
+        FeedbackAspect.safety => Icons.health_and_safety_outlined,
+        FeedbackAspect.booking => Icons.support_agent_outlined,
+        FeedbackAspect.assistance => Icons.accessible_forward_outlined,
+      };
+}
 
 // One comment a patient left on the feedback page.
 class PatientFeedback {
@@ -15,6 +44,7 @@ class PatientFeedback {
     required this.date,
     this.name = '',
     this.ref = '',
+    this.aspects = const [],
     this.published = false,
     this.id = '',
   });
@@ -30,6 +60,8 @@ class PatientFeedback {
   // Optional: the patient may leave these empty.
   final String name;
   final String ref;
+  // Parts of the service the comment is about (may be empty).
+  final List<FeedbackAspect> aspects;
   // True when staff chose to show this comment on the homepage.
   bool published;
 }
@@ -76,21 +108,28 @@ class FeedbackStore extends ChangeNotifier {
       ? 0
       : items.map((f) => f.rating).reduce((a, b) => a + b) / items.length;
 
-  // Adds a new comment from the feedback page and saves it.
-  void add(PatientFeedback feedback) {
+  // Saves a new comment from the feedback page. Works without signing in
+  // (patients use it). Returns false if it could not be saved, e.g. no
+  // internet, so the page can ask the patient to try again.
+  Future<bool> add(PatientFeedback feedback) async {
     final doc = _db.doc();
     feedback.id = doc.id;
-    items.insert(0, feedback);
-    notifyListeners();
-    _write(() => doc.set({
-          'rating': feedback.rating,
-          'type': feedback.type.name,
-          'comment': feedback.comment,
-          'date': Timestamp.fromDate(feedback.date),
-          'name': feedback.name,
-          'ref': feedback.ref,
-          'published': feedback.published,
-        }));
+    try {
+      await doc.set({
+        'rating': feedback.rating,
+        'type': feedback.type.name,
+        'comment': feedback.comment,
+        'date': Timestamp.fromDate(feedback.date),
+        'name': feedback.name,
+        'ref': feedback.ref,
+        'aspects': [for (final a in feedback.aspects) a.name],
+        'published': false,
+      }).timeout(const Duration(seconds: 15));
+      return true;
+    } catch (e) {
+      debugPrint('Saving feedback failed: $e');
+      return false;
+    }
   }
 
   // Shows or hides a comment on the homepage.
@@ -126,6 +165,10 @@ class FeedbackStore extends ChangeNotifier {
         date: (doc['date'] as Timestamp).toDate(),
         name: doc['name'] as String? ?? '',
         ref: doc['ref'] as String? ?? '',
+        aspects: [
+          for (final name in (doc.data()['aspects'] as List? ?? const []))
+            if (FeedbackAspect.values.asNameMap()[name] case final a?) a,
+        ],
         published: doc['published'] as bool? ?? false,
       );
 
