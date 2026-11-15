@@ -85,10 +85,6 @@ class _TrackPageState extends State<TrackPage> {
         LookupResult.notFound => context.t(
             'The reference or tracking code is not correct.',
             'Referans veya takip kodu hatalı.'),
-        LookupResult.locked => context.t(
-            'Too many wrong codes. Please wait 15 minutes or call us.',
-            'Çok fazla hatalı kod girildi. Lütfen 15 dakika bekleyin veya '
-                'bizi arayın.'),
         LookupResult.failed => context.t(
             'Could not check your booking. Please try again.',
             'Rezervasyonunuz kontrol edilemedi. Lütfen tekrar deneyin.'),
@@ -279,7 +275,7 @@ class _TrackingViewState extends State<_TrackingView> {
   }
 
   // All steps of a booking, from request to arrival at the hospital.
-  List<_Step> _steps(BuildContext context) => [
+  List<_Step> _steps(BuildContext context, TrackingInfo info) => [
         (
           label: context.t('Request received', 'Talep alındı'),
           icon: Icons.inbox_outlined
@@ -293,7 +289,7 @@ class _TrackingViewState extends State<_TrackingView> {
           icon: Icons.event_available_outlined
         ),
         for (final trip in TripStatus.values)
-          (label: trip.label(context), icon: trip.icon),
+          (label: trip.label(context, info.type, info.branch), icon: trip.icon),
       ];
 
   // Index in [_steps] of the step the booking has reached.
@@ -305,12 +301,15 @@ class _TrackingViewState extends State<_TrackingView> {
           Stage.reserved => 2,
           // Arranged without a trip status (older bookings).
           Stage.arranged => 3,
+          // Shown by [_cancelled] instead.
+          Stage.cancelled => 0,
         };
 
   // Card with the steps: done = blue check, current = big and blue,
   // not yet = grey. Plus the map while the driver is driving.
   Widget _progress(BuildContext context, TrackingInfo info) {
-    final steps = _steps(context);
+    if (info.stage == Stage.cancelled) return _cancelled(context);
+    final steps = _steps(context, info);
     final current = _current(info);
     return Container(
       padding: EdgeInsets.all(Responsive.isMobile(context) ? 20 : 32),
@@ -338,7 +337,12 @@ class _TrackingViewState extends State<_TrackingView> {
           if (info.driverLocation != null) ...[
             const SizedBox(height: 20),
             RouteMap(
-              destination: branchLocation(info.branch),
+              destination: info.type.fromHospital
+                  ? airportLocation
+                  : branchLocation(info.branch),
+              destinationIcon: info.type.fromHospital
+                  ? Icons.flight
+                  : placeIcon(info.branch),
               driver: info.driverLocation,
             ),
           ],
@@ -382,12 +386,65 @@ class _TrackingViewState extends State<_TrackingView> {
     );
   }
 
+  // Card shown instead of the steps once the booking was cancelled.
+  Widget _cancelled(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(Responsive.isMobile(context) ? 20 : 32),
+      decoration: BoxDecoration(
+        color: AppColors.emergencyBg,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.event_busy_outlined,
+              size: 40, color: AppColors.emergencyText),
+          const SizedBox(height: 12),
+          Text(context.t('Booking cancelled', 'Rezervasyon iptal edildi'),
+              style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.emergencyText)),
+          const SizedBox(height: 8),
+          Text(
+              context.t(
+                  'This ride will not take place. If you still need '
+                      'transport, please book a new time or call us.',
+                  'Bu yolculuk gerçekleşmeyecek. Hâlâ ulaşıma ihtiyacınız '
+                      'varsa lütfen yeni bir saat seçin veya bizi arayın.'),
+              style: const TextStyle(height: 1.5)),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              FilledButton(
+                onPressed: () => Navigator.pushNamed(context, '/booking'),
+                child: Text(context.t('Book again', 'Yeniden rezervasyon')),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => openLink('tel:${ContactInfo.phoneLink}'),
+                icon: const Icon(Icons.call_outlined),
+                label: Text(context.t('Call us', 'Bizi arayın')),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   // Light blue panel with the booking details.
   Widget _details(BuildContext context, TrackingInfo info) {
     final rows = [
       (context.t('Reference', 'Referans'), info.ref),
       (context.t('Transport', 'Ulaşım'), info.type.label(context)),
-      (context.t('To', 'Nereye'), info.branch),
+      if (info.type.fromHospital) ...[
+        (context.t('From', 'Nereden'), info.branch),
+        (context.t('To', 'Nereye'), airportName),
+      ] else
+        (context.t('To', 'Nereye'), info.branch),
       (
         context.t('Date & time', 'Tarih ve saat'),
         '${formatDate(info.date)}  ${formatTime(info.time)}'

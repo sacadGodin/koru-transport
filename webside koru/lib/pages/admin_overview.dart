@@ -5,16 +5,20 @@ import '../data/feedback.dart';
 import '../lang.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'admin_schedule.dart';
 
 // "Overview" section of the admin dashboard: how many patients rode today,
 // yesterday and this month, a day-by-day chart, what kind of transport they
 // needed, which branches they went to, and the rides coming up.
 // Counts use the ride date (the day the patient is picked up).
 class AdminOverview extends StatefulWidget {
-  const AdminOverview({super.key, required this.onOpenStage});
+  const AdminOverview(
+      {super.key, required this.onOpenStage, required this.onOpenSchedule});
 
   // Opens the bookings section on one stage tab.
   final ValueChanged<Stage> onOpenStage;
+  // Opens the Schedule section.
+  final VoidCallback onOpenSchedule;
 
   @override
   State<AdminOverview> createState() => _AdminOverviewState();
@@ -69,8 +73,7 @@ class _AdminOverviewState extends State<AdminOverview> {
 
     final waiting =
         bookingStore.bookings.where((b) => b.stage == Stage.newRequest).length;
-    final todayNotReady =
-        _on(today).where((b) => b.stage != Stage.arranged).length;
+    final todayNotReady = _on(today).where((b) => b.stage.next != null).length;
 
     final selected = _inMonth(_month);
 
@@ -124,6 +127,10 @@ class _AdminOverviewState extends State<AdminOverview> {
             ),
           ],
         ),
+        const SizedBox(height: 16),
+
+        // Which hours today are empty, partly booked or full.
+        TodayHours(onOpenSchedule: widget.onOpenSchedule),
         const SizedBox(height: 16),
 
         // Things that need a coordinator now.
@@ -223,7 +230,7 @@ class _AdminOverviewState extends State<AdminOverview> {
             _Breakdown(
               title: context.t('Branch', 'Şube'),
               rows: [
-                for (final br in branches)
+                for (final br in destinations)
                   (
                     Icons.local_hospital_outlined,
                     br,
@@ -235,7 +242,7 @@ class _AdminOverviewState extends State<AdminOverview> {
             _Breakdown(
               title: context.t('Extra help needed', 'Ek ihtiyaçlar'),
               rows: [
-                for (final n in MobilityNeed.values)
+                for (final n in offeredNeeds)
                   (
                     Icons.medical_services_outlined,
                     n.label(context),
@@ -548,7 +555,9 @@ class _Upcoming extends StatelessWidget {
     // Finished trips are no longer upcoming.
     final rides = bookingStore.bookings.where((b) {
       final d = DateTime(b.date.year, b.date.month, b.date.day);
-      return (d == today || d == tomorrow) && b.trip != TripStatus.completed;
+      return (d == today || d == tomorrow) &&
+          b.trip != TripStatus.completed &&
+          b.stage != Stage.cancelled;
     }).toList()
       ..sort((a, b) {
         final byDay = a.date.compareTo(b.date);
@@ -590,9 +599,9 @@ class _Upcoming extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w700)),
                 subtitle: Text(
                     '${DateTime(b.date.year, b.date.month, b.date.day) == today ? context.t('Today', 'Bugün') : context.t('Tomorrow', 'Yarın')}'
-                    '  ·  ${b.ref}  ·  ${b.from} → ${b.branch}',
+                    '  ·  ${b.ref}  ·  ${b.route}',
                     overflow: TextOverflow.ellipsis),
-                trailing: _StageBadge(b.stage),
+                trailing: StageBadge(b.stage),
               ),
             ),
         ],
@@ -601,9 +610,10 @@ class _Upcoming extends StatelessWidget {
   }
 }
 
-// Small colored label with the booking's stage.
-class _StageBadge extends StatelessWidget {
-  const _StageBadge(this.stage);
+// Small colored label with the booking's stage (also used by the
+// schedule).
+class StageBadge extends StatelessWidget {
+  const StageBadge(this.stage, {super.key});
 
   final Stage stage;
 
@@ -614,6 +624,7 @@ class _StageBadge extends StatelessWidget {
       Stage.confirmed => AppColors.gold,
       Stage.reserved => AppColors.blue,
       Stage.arranged => AppColors.success,
+      Stage.cancelled => AppColors.muted,
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

@@ -3,7 +3,6 @@
 //   patient books -> looks up with ref + code -> watches live tracking
 //   coordinator adds a driver, confirms, reserves, assigns the driver
 //   driver signs in, sees the trip and drives it to "completed"
-//   coordinator sets a free bus route; visitors see it but cannot change it
 //
 // It is built as a small web app (the Firebase web SDK only loads in a
 // real page, not inside "flutter test"). Run from the functions folder:
@@ -20,9 +19,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:koru_website/data/bookings.dart';
 import 'package:koru_website/data/drivers.dart';
-import 'package:koru_website/data/shuttles.dart';
 import 'package:koru_website/data/staff_auth.dart';
 import 'package:koru_website/data/tracking.dart';
 import 'package:koru_website/firebase_options.dart';
@@ -75,6 +74,7 @@ Future<void> runFlow() async {
     date: DateTime.now().add(const Duration(days: 2)),
     time: const TimeOfDay(hour: 9, minute: 30),
     needs: {MobilityNeed.wheelchair, MobilityNeed.companion},
+    passengers: 2,
     notes: 'Third floor, no lift.',
     pickup: const LatLng(39.92, 32.85),
   );
@@ -119,11 +119,11 @@ Future<void> runFlow() async {
       bookingStore, () => bookingStore.bookings.any((b) => b.ref == ref));
   expect(booking().patient, 'Ayşe Yılmaz');
 
-  bookingStore.advance(booking());
+  expect(await bookingStore.advance(booking()), null);
   await waitForTracking(token, (i) => i.stage == Stage.confirmed);
 
   booking().time = const TimeOfDay(hour: 10, minute: 0);
-  bookingStore.advance(booking());
+  expect(await bookingStore.advance(booking()), null);
   await waitForTracking(token, (i) => i.stage == Stage.reserved);
 
   booking()
@@ -131,7 +131,7 @@ Future<void> runFlow() async {
     ..driver = driver.name
     ..driverUid = driver.uid
     ..trip = TripStatus.assigned;
-  bookingStore.advance(booking());
+  expect(await bookingStore.advance(booking()), null);
   info = await waitForTracking(token, (i) => i.stage == Stage.arranged);
   expect(info.trip, TripStatus.assigned);
   expect(info.driver, 'Mehmet');
@@ -156,7 +156,8 @@ Future<void> runFlow() async {
   // 7. Driver drives the trip; the patient sees each step live.
   await bookingStore.nextTripStep(booking());
   await waitFor(bookingStore, () => booking().trip == TripStatus.enRoute);
-  await bookingStore.shareLocation(booking(), const LatLng(39.93, 32.86));
+  check(await bookingStore.shareLocation(booking(), const LatLng(39.93, 32.86)),
+      'location saved');
   info = await waitForTracking(
       token, (i) => i.trip == TripStatus.enRoute && i.driverLocation != null);
   expect(info.driverLocation, const LatLng(39.93, 32.86));
@@ -172,56 +173,46 @@ Future<void> runFlow() async {
   }
   expect(info.driverLocation, null);
 
+  // What the server really has (not only what this browser wrote).
+  const server = GetOptions(source: Source.server);
+  final saved =
+      await FirebaseFirestore.instance.doc('bookings/$ref').get(server);
+  expect(saved.get('trip'), 'completed', reason: 'booking on the server');
+  final live =
+      await FirebaseFirestore.instance.doc('tracking/$token').get(server);
+  expect(live.get('trip'), 'completed', reason: 'tracking on the server');
+
   await staffAuth.signOut();
   await tracking.forget();
   print('Flow finished for $ref');
-
-  // 8. Free buses: empty until a coordinator fills a route in.
-  ShuttleRoute route(ShuttleBranch b) =>
-      shuttleStore.routes.firstWhere((r) => r.branch == b);
-  expect(route(ShuttleBranch.sincan).announced, false,
-      reason: 'no schedule before staff set one');
-  expect(
-      await shuttleStore.save(const ShuttleRoute(
-          branch: ShuttleBranch.sincan,
-          destination: 'Test stop',
-          times: ['08:00'])),
-      false,
-      reason: 'visitors cannot change the free buses');
-
-  expect(await staffAuth.signIn('coordinator@koru.test', 'staff-pass-123'),
-      SignInResult.ok);
-  expect(
-      await shuttleStore.save(ShuttleRoute(
-          branch: ShuttleBranch.sincan,
-          destination: 'Test stop',
-          times: parseTimes('17:45, 8:15')!,
-          frequency: 30)),
-      true);
-  await staffAuth.signOut();
-
-  // A visitor's homepage picks the change up by itself.
-  await waitFor(shuttleStore, () => route(ShuttleBranch.sincan).announced);
-  final sincan = route(ShuttleBranch.sincan);
-  expect(sincan.destination, 'Test stop');
-  expect(sincan.times.join(','), '08:15,17:45');
-  expect(sincan.frequency, 30);
-  expect(route(ShuttleBranch.cukurambar).announced, false);
-  expect(route(ShuttleBranch.kavaklidere).announced, false);
-  print('Free bus routes OK');
 }
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // The app's own code (e.g. adding a driver) only uses the emulators when
+  // built with this flag; without it, it would write to the real project.
+  if (!const bool.fromEnvironment('USE_EMULATORS')) {
+    print('FLOW FAILED: build with --dart-define=USE_EMULATORS=true');
+    _showResult('FLOW FAILED: build with --dart-define=USE_EMULATORS=true');
+    return;
+  }
   try {
     await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform);
-    await FirebaseAuth.instance.useAuthEmulator('localhost', 9099);
-    FirebaseFirestore.instance.useFirestoreEmulator('localhost', 8080);
-    cloudFunctions.useFunctionsEmulator('localhost', 5001);
+    await FirebaseAuth.instance.useAuthEmulator('localhost',
+        const int.fromEnvironment('AUTH_PORT', defaultValue: 9099));
+    FirebaseFirestore.instance.useFirestoreEmulator('localhost',
+        const int.fromEnvironment('FIRESTORE_PORT', defaultValue: 8080));
     await runFlow().timeout(const Duration(minutes: 2));
     print('FLOW OK');
+    _showResult('FLOW OK');
   } catch (e, stack) {
     print('FLOW FAILED: $e\n$stack');
+    _showResult('FLOW FAILED: $e');
   }
 }
+
+// Also puts the result in the page title, for browsers whose console cannot
+// be read from a script (e.g. Safari).
+void _showResult(String text) => SystemChrome.setApplicationSwitcherDescription(
+    ApplicationSwitcherDescription(label: text, primaryColor: 0xFF000000));

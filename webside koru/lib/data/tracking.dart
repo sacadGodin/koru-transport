@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,10 +6,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'bookings.dart';
 
 // What happened when a patient looked up their booking.
-enum LookupResult { ok, notFound, locked, failed }
+enum LookupResult { ok, notFound, failed }
 
-// What the patient's tracking page shows. A safe copy of the booking made
-// by the syncTracking Cloud Function (no name, phone or address).
+// What the patient's tracking page shows. A safe copy of the booking, saved
+// with every change to it (no name, phone or address).
 class TrackingInfo {
   TrackingInfo({
     required this.ref,
@@ -65,23 +64,25 @@ class TrackingInfo {
 class Tracking {
   static const _key = 'tracking_token';
 
-  // Checks reference + code with the lookupBooking function. On success
-  // returns the tracking link and remembers it.
+  // Works out the tracking link from reference + code and checks that it
+  // exists. On success returns the tracking link and remembers it.
+  // Patients may type the code in lower case or with spaces/dashes.
   Future<(LookupResult, String?)> lookup(String ref, String code) async {
+    ref = ref.trim().toUpperCase();
+    code = code.toUpperCase().replaceAll(RegExp('[^A-Z0-9]'), '');
+    if (!RegExp(r'^KR-\d{1,9}$').hasMatch(ref) ||
+        code.length != trackingCodeLength) {
+      return (LookupResult.notFound, null);
+    }
+    final token = trackingIdFor(ref, code);
     try {
-      final result = await cloudFunctions
-          .httpsCallable('lookupBooking')
-          .call<Map>({'ref': ref, 'code': code});
-      final token = result.data['token'] as String;
+      final doc = await FirebaseFirestore.instance
+          .collection('tracking')
+          .doc(token)
+          .get(const GetOptions(source: Source.server));
+      if (!doc.exists) return (LookupResult.notFound, null);
       await remember(token);
       return (LookupResult.ok, token);
-    } on FirebaseFunctionsException catch (e) {
-      debugPrint('Lookup failed: ${e.code}');
-      return switch (e.code) {
-        'not-found' || 'invalid-argument' => (LookupResult.notFound, null),
-        'resource-exhausted' => (LookupResult.locked, null),
-        _ => (LookupResult.failed, null),
-      };
     } catch (e) {
       debugPrint('Lookup failed: $e');
       return (LookupResult.failed, null);

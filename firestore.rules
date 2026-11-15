@@ -1,32 +1,61 @@
 rules_version='2'
 
 // Who can do what:
-//   Visitors (not signed in): send feedback and contact messages, read
-//   published feedback and the free bus routes, and
-//   read ONE tracking document if they know its secret id (the tracking
-//   link). Bookings are created by the createBooking Cloud Function, never
-//   by the browser directly.
+//   Visitors (not signed in): book a ride in a time slot that has room,
+//   see how full each time slot is, send feedback and contact messages,
+//   read published feedback, and read ONE tracking
+//   document if they know its secret id. That id is worked out from the
+//   booking reference + tracking code, so only the patient has it.
 //   Drivers (signed in AND listed in drivers/{uid} with active == true):
 //   read the bookings assigned to them and move the trip forward.
-//   Staff (signed in AND listed in staff/{uid}): everything else.
+//   Staff (signed in AND listed in staff/{uid}): everything else, including
+//   cancelling and rescheduling bookings and setting how many bookings a
+//   time slot takes.
+//   Admins (staff whose role is "admin", or who have no role): also add,
+//   change and remove staff accounts.
+//
+// Booking stages (staff move them; the patient sees each one):
+//   newRequest -> confirmed -> reserved -> arranged (driver assigned, then
+//   the driver moves the trip: assigned -> enRoute -> arrived -> onBoard
+//   -> completed). Staff may set any stage, so a booking can be cancelled
+//   from any stage and restored as a new request.
+//
+// Time slots: one per hour, 00:00 to 23:00. slots/{day}T{hour} counts the
+// bookings that start in that hour. A new booking must add one to its slot
+// in the same write, and is refused if that would go over the slot's
+// limit; nobody but staff can lower a count or change a limit.
+//
+// There is no server code (no Cloud Functions): the website writes
+// everything itself, so these rules are what keeps the data safe. They
+// check every write, including the booking number and the tracking copy.
 //
 // Data model (fields the rules rely on):
-//   staff/{uid}            added by hand in the Firebase console
-//   drivers/{uid}          name, phone, vehicle, email, active (bool)
-//                          created, edited and deleted by the
-//                          create/update/deleteDriver Cloud Functions
+//   staff/{uid}            name, email, role ("staff" or "admin"; none =
+//                          admin), createdAt. Added by admins in the
+//                          dashboard (the first admin by hand in the
+//                          Firebase console)
+//   drivers/{uid}          name, phone, vehicle, email, active (bool),
+//                          createdAt. Created, edited and deleted by staff
 //   bookings/{ref}         ref, patient, phone, type, from, branch, date,
-//                          time, needs, notes, pickup, stage, createdAt,
-//                          vehicle, driver, driverUid, trip, driverLocation
-//   bookingSecrets/{ref}   code hash, tracking token (functions only)
-//   tracking/{token}       safe copy of a booking for the patient
-//                          (written by the syncTracking function only)
-//   counters/bookings      next booking number (functions only)
+//                          time, needs, passengers, notes, pickup, stage,
+//                          createdAt,
+//                          vehicle, driver, driverUid, trip, driverLocation,
+//                          trackingId
+//   tracking/{trackingId}  safe copy of a booking for the patient. The id
+//                          is sha256("<ref>:<code>") in hex. Written in the
+//                          same step as every change to its booking
+//                          slot (the time slot it holds a place in, null
+//                          when cancelled or made before slots existed)
+//   counters/bookings      next booking number
+//   slots/{YYYY-MM-DDTHH}  date ("YYYY-MM-DD"), count (bookings in it),
+//                          capacity (this slot's own limit, 0 = closed, or
+//                          null = the usual limit), lastRef (last booking
+//                          that took a place)
+//   settings/booking       capacity (usual bookings per slot), updatedAt
 //   messages/{id}          name, reply, topic, reference, message, date,
 //                          handled (contact form)
-//   feedback/{id}          rating, type, comment, date, name, ref, published
-//   shuttleRoutes/{A|B|C}  destination, times (list of "HH:MM"),
-//                          frequency (minutes or null), updatedAt
+//   feedback/{id}          rating, type, comment, date, name, ref, aspects,
+//                          published
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -41,38 +70,143 @@ service cloud.firestore {
              .data.get('active', false) == true;
     }
 
-    // Staff list. Added by hand in the Firebase console (document id = the
-    // user's UID from Authentication). Each person may only check their own.
-    match /staff/{uid} {
-      allow read: if request.auth != null && request.auth.uid == uid;
-      allow write: if false;
+    function isAdmin() {
+      return isStaff()
+        && get(/databases/$(database)/documents/staff/$(request.auth.uid))
+             .data.get('role', 'admin') == 'admin';
     }
 
-    // Driver accounts. Staff see all of them and may switch a driver on or
-    // off; a driver may read their own profile.
+    function path(collection, id) {
+      return /databases/$(database)/documents/$(collection)/$(id);
+    }
+
+    function text(value, max) {
+      return value is string && value.trim().size() > 0 && value.size() <= max;
+    }
+
+    // Staff list (document id = the user's UID from Authentication). Each
+    // person may check their own; admins see, add, change and remove the
+    // others. Nobody changes or removes their own entry, so an admin cannot
+    // lock themselves out by mistake.
+    function isStaffProfile(d) {
+      return d.keys().hasOnly(['name', 'email', 'role', 'createdAt'])
+        && d.role in ['staff', 'admin']
+        && (!('name' in d) || (d.name is string && d.name.size() <= 200))
+        && (!('email' in d) || (d.email is string && d.email.size() <= 200));
+    }
+
+    match /staff/{uid} {
+      allow read: if request.auth != null
+        && (request.auth.uid == uid || isAdmin());
+      allow create: if isAdmin()
+        && isStaffProfile(request.resource.data)
+        && text(request.resource.data.name, 200)
+        && text(request.resource.data.email, 200)
+        && request.resource.data.createdAt == request.time;
+      allow update: if isAdmin()
+        && uid != request.auth.uid
+        && isStaffProfile(request.resource.data)
+        && request.resource.data.get('email', null)
+             == resource.data.get('email', null)
+        && request.resource.data.get('createdAt', null)
+             == resource.data.get('createdAt', null);
+      allow delete: if isAdmin() && uid != request.auth.uid;
+    }
+
+    // Driver accounts. Staff create the sign-in account from the dashboard
+    // and then this profile; only staff may add, edit or remove one, so
+    // signing up an account on your own never makes you a driver.
+    function isDriverProfile(d) {
+      return text(d.name, 200)
+        && text(d.phone, 50)
+        && d.vehicle is string && d.vehicle.size() <= 50
+        && text(d.email, 200)
+        && d.active is bool;
+    }
+
     match /drivers/{uid} {
       allow read: if isStaff()
         || (request.auth != null && request.auth.uid == uid);
+      allow create: if isStaff()
+        && request.resource.data.keys().hasOnly(
+             ['name', 'phone', 'vehicle', 'email', 'active', 'createdAt'])
+        && isDriverProfile(request.resource.data)
+        && request.resource.data.active == true
+        && request.resource.data.createdAt == request.time;
       allow update: if isStaff()
         && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['active'])
-        && request.resource.data.active is bool;
-      allow create, delete: if false;
+             .hasOnly(['name', 'phone', 'vehicle', 'active'])
+        && isDriverProfile(request.resource.data);
+      allow delete: if isStaff();
     }
 
-    // Only Cloud Functions touch these.
+    // Next booking number. Anyone may read it (it is only a number). It
+    // only ever goes up by one, in the same step that creates the booking
+    // with the number it gives out.
     match /counters/{id} {
-      allow read, write: if false;
+      allow read: if id == 'bookings';
+      allow create: if id == 'bookings'
+        && request.resource.data.keys().hasOnly(['next'])
+        && request.resource.data.next == 1002
+        && !exists(path('bookings', 'KR-1001'))
+        && existsAfter(path('bookings', 'KR-1001'));
+      allow update: if id == 'bookings'
+        && request.resource.data.keys().hasOnly(['next'])
+        && request.resource.data.next == resource.data.next + 1
+        && !exists(path('bookings', 'KR-' + string(resource.data.next)))
+        && existsAfter(path('bookings', 'KR-' + string(resource.data.next)));
+      allow delete: if false;
     }
-    match /bookingSecrets/{ref} {
-      allow read, write: if false;
+
+    // The safe parts of a booking (no name, phone, address or notes; the
+    // driver's first name only; their location only while driving). Must
+    // match the booking exactly as it is after the same write.
+    function isTrackingOf(t, b) {
+      return t.keys().hasOnly(['ref', 'type', 'branch', 'date', 'time',
+             'stage', 'trip', 'driver', 'vehicle', 'driverLocation',
+             'updatedAt'])
+        && t.ref == b.ref
+        && t.type == b.type
+        && t.branch == b.branch
+        && t.date == b.date
+        && t.time == b.time
+        && t.stage == b.stage
+        && t.trip == b.get('trip', null)
+        && t.vehicle == b.get('vehicle', null)
+        && (t.driver == null || t.driver == b.driver.split(' ')[0])
+        && (t.driverLocation == null
+            || (b.get('trip', null) in ['enRoute', 'onBoard']
+                && t.driverLocation == b.get('driverLocation', null)))
+        && t.updatedAt == request.time;
     }
 
     // Live status for the patient. Only a direct get by the secret id;
     // listing the collection is never allowed.
     match /tracking/{token} {
       allow get: if true;
-      allow list, write: if false;
+      allow list: if false;
+
+      // Made by the patient's browser together with the booking.
+      allow create: if request.resource.data.ref is string
+        && !exists(path('bookings', request.resource.data.ref))
+        && getAfter(path('bookings', request.resource.data.ref))
+             .data.trackingId == token
+        && isTrackingOf(request.resource.data,
+             getAfter(path('bookings', request.resource.data.ref)).data);
+
+      // Kept up to date by staff, or by the booking's driver, whenever
+      // they change the booking.
+      allow update: if (isStaff()
+          || (isDriver()
+              && getAfter(path('bookings', resource.data.ref))
+                   .data.get('driverUid', null) == request.auth.uid))
+        && request.resource.data.ref == resource.data.ref
+        && getAfter(path('bookings', resource.data.ref))
+             .data.trackingId == token
+        && isTrackingOf(request.resource.data,
+             getAfter(path('bookings', resource.data.ref)).data);
+
+      allow delete: if isStaff();
     }
 
     // Trip steps a driver goes through, and the step that comes after each.
@@ -87,36 +221,128 @@ service cloud.firestore {
 
     function isValidBooking(b) {
       return b.ref is string
-        && b.stage in ['newRequest', 'confirmed', 'reserved', 'arranged']
-        && b.type in ['ambulance', 'wheelchair', 'standard', 'airport']
+        && b.stage in ['newRequest', 'confirmed', 'reserved', 'arranged',
+                       'cancelled']
+        && b.type in ['ambulance', 'wheelchair', 'standard', 'airport',
+                   'toAirport']
         && b.date is timestamp
         && b.time is string && b.time.size() == 5
         && (b.vehicle == null || (b.vehicle is string && b.vehicle.size() <= 50))
         && (b.driver == null || (b.driver is string && b.driver.size() <= 200))
         && (b.get('trip', null) == null
             || b.trip in ['assigned', 'enRoute', 'arrived', 'onBoard', 'completed'])
-        && (b.get('driverLocation', null) == null || b.driverLocation is latlng);
+        && (b.get('driverLocation', null) == null || b.driverLocation is latlng)
+        && (b.get('slot', null) == null || b.slot is string);
+    }
+
+    // The booking form as the patient sends it: checked field by field,
+    // starting as a new request with no driver.
+    function isNewBooking(b, ref) {
+      return b.keys().hasOnly(['ref', 'patient', 'phone', 'type', 'from',
+             'branch', 'date', 'time', 'needs', 'passengers', 'notes',
+             'pickup', 'stage', 'vehicle', 'driver', 'driverUid', 'trip',
+             'driverLocation', 'trackingId', 'createdAt', 'slot'])
+        && b.ref == ref
+        && text(b.patient, 200)
+        && text(b.phone, 50)
+        && b.type in ['ambulance', 'wheelchair', 'standard', 'airport',
+                   'toAirport']
+        && text(b.from, 500)
+        && text(b.branch, 200)
+        && b.date is timestamp
+        && b.time is string && b.time.matches('([01][0-9]|2[0-3]):[0-5][0-9]')
+        && b.needs is list && b.needs.size() <= 6
+        && b.needs.hasOnly(['wheelchair', 'stretcher', 'oxygen', 'companion',
+                            'luggage', 'other'])
+        // People riding, the patient included (missing on older bookings).
+        && (!('passengers' in b)
+            || (b.passengers is int && b.passengers >= 1 && b.passengers <= 8))
+        && b.notes is string && b.notes.size() <= 2000
+        && (b.pickup == null || b.pickup is latlng)
+        && b.stage == 'newRequest'
+        && b.vehicle == null
+        && b.driver == null
+        && b.driverUid == null
+        && b.trip == null
+        && b.driverLocation == null
+        && b.trackingId is string && b.trackingId.size() == 64
+        && b.createdAt == request.time
+        // The slot of the hour the ride starts in.
+        && b.slot is string
+        && b.slot.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}T' + b.time.split(':')[0]);
+    }
+
+    // Bookings per time slot when the slot has no limit of its own. Must
+    // match defaultSlotCapacity in lib/data/bookings.dart.
+    function defaultCapacity() {
+      return exists(path('settings', 'booking'))
+        ? get(path('settings', 'booking')).data.capacity
+        : 3;
+    }
+
+    // A slot's limit after this write (limits only change in staff writes).
+    function slotCapacity(id) {
+      let own = getAfter(path('slots', id)).data.get('capacity', null);
+      return own != null ? own : defaultCapacity();
+    }
+
+    function slotCount(id) {
+      return exists(path('slots', id)) ? get(path('slots', id)).data.count : 0;
+    }
+
+    // The booking [ref] takes one place in slot [id] in this same write,
+    // and the slot is not over its limit after it.
+    function takesPlace(id, ref) {
+      let after = getAfter(path('slots', id)).data;
+      return after.count == slotCount(id) + 1
+        && after.count <= slotCapacity(id)
+        && after.lastRef == ref;
+    }
+
+    // Every change to a booking also refreshes its tracking copy in the
+    // same write, so the patient always sees the latest status.
+    function refreshesTracking(b) {
+      return b.get('trackingId', null) == null
+        || getAfter(path('tracking', b.trackingId)).data.updatedAt
+             == request.time;
     }
 
     match /bookings/{ref} {
-      // Bookings are only created by the createBooking function.
-      allow create: if false;
+      // Anyone may book. The number must be the counter's next one (and the
+      // counter goes up in the same write), and the tracking copy is made
+      // with it.
+      allow create: if ref == 'KR-' + string(
+            exists(path('counters', 'bookings'))
+              ? get(path('counters', 'bookings')).data.next
+              : 1001)
+        && getAfter(path('counters', 'bookings')).data.next
+             == (exists(path('counters', 'bookings'))
+                   ? get(path('counters', 'bookings')).data.next
+                   : 1001) + 1
+        && isNewBooking(request.resource.data, ref)
+        && !exists(path('tracking', request.resource.data.trackingId))
+        && existsAfter(path('tracking', request.resource.data.trackingId))
+        && takesPlace(request.resource.data.slot, ref);
+
       allow delete: if isStaff();
 
       allow read: if isStaff()
         || (isDriver() && resource.data.get('driverUid', null) == request.auth.uid);
 
-      // Staff move bookings through the stages. They may not change the
-      // reference, the patient's own details or the creation time, and a
-      // driver they assign must be an active driver.
+      // Staff move bookings through the stages, cancel, restore and
+      // reschedule them (the website moves the slot places in the same
+      // write). They may not change the reference, the patient's own
+      // details, the tracking id or the creation time, and a driver they
+      // assign must be an active driver.
       allow update: if isStaff()
         && isValidBooking(request.resource.data)
         && !request.resource.data.diff(resource.data).affectedKeys()
               .hasAny(['ref', 'patient', 'phone', 'from', 'pickup', 'needs',
-                       'notes', 'createdAt'])
+                       'passengers', 'notes', 'createdAt', 'trackingId'])
         && (request.resource.data.get('driverUid', null) == null
             || get(/databases/$(database)/documents/drivers/$(request.resource.data.driverUid))
-                 .data.get('active', false) == true);
+                 .data.get('active', false) == true)
+        && refreshesTracking(request.resource.data);
 
       // The assigned driver may only move the trip one step forward and
       // share their location, on an arranged booking.
@@ -129,7 +355,66 @@ service cloud.firestore {
         && (request.resource.data.trip == resource.data.trip
             || request.resource.data.trip == nextTrip(resource.data.trip))
         && (request.resource.data.trip == resource.data.trip
-            || request.resource.data.tripUpdatedAt == request.time);
+            || request.resource.data.tripUpdatedAt == request.time)
+        && refreshesTracking(request.resource.data);
+    }
+
+    // How full each one-hour time slot is. No personal data, so anyone may
+    // read it (the booking form shows the places left).
+    function isSlot(id, s) {
+      return s.keys().hasOnly(['date', 'count', 'capacity', 'lastRef'])
+        && id.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}T([01][0-9]|2[0-3])')
+        && s.date == id.split('T')[0]
+        && s.count is int && s.count >= 0
+        && (s.get('capacity', null) == null
+            || (s.capacity is int && s.capacity >= 0 && s.capacity <= 50))
+        && (s.get('lastRef', null) == null || s.lastRef is string);
+    }
+
+    // One more place, taken by a new booking for this slot made in the
+    // same write, within the limit. This is the only change visitors may
+    // make, so they cannot fill a slot without real bookings.
+    function placeTakenBy(id, s, before) {
+      return s.count == before + 1
+        && s.count <= slotCapacity(id)
+        && s.lastRef is string
+        && !exists(path('bookings', s.lastRef))
+        && getAfter(path('bookings', s.lastRef)).data.slot == id;
+    }
+
+    match /slots/{id} {
+      allow read: if true;
+
+      allow create: if isSlot(id, request.resource.data)
+        && ((isStaff()
+             && (request.resource.data.count == 0
+                 || request.resource.data.count <= slotCapacity(id)))
+            || (request.resource.data.get('capacity', null) == null
+                && placeTakenBy(id, request.resource.data, 0)));
+
+      // Staff may free places and set the limit, but only fill a slot up
+      // to its limit (they raise the limit first to go over it).
+      allow update: if isSlot(id, request.resource.data)
+        && ((isStaff()
+             && (request.resource.data.count <= resource.data.count
+                 || request.resource.data.count <= slotCapacity(id)))
+            || (request.resource.data.get('capacity', null)
+                  == resource.data.get('capacity', null)
+                && placeTakenBy(id, request.resource.data, resource.data.count)));
+
+      allow delete: if false;
+    }
+
+    // Usual number of bookings per slot. Anyone may read it; staff set it.
+    match /settings/{id} {
+      allow read: if id == 'booking';
+      allow write: if isStaff()
+        && id == 'booking'
+        && request.resource.data.keys().hasOnly(['capacity', 'updatedAt'])
+        && request.resource.data.capacity is int
+        && request.resource.data.capacity >= 1
+        && request.resource.data.capacity <= 50
+        && request.resource.data.updatedAt == request.time;
     }
 
     // Contact form messages. Anyone may send one (it starts unanswered);
@@ -148,7 +433,7 @@ service cloud.firestore {
         && request.resource.data.reply is string
         && request.resource.data.reply.size() > 0
         && request.resource.data.reply.size() <= 200
-        && request.resource.data.topic in ['booking', 'change', 'shuttle', 'other']
+        && request.resource.data.topic in ['booking', 'change', 'other']
         && request.resource.data.reference is string
         && request.resource.data.reference.size() <= 50
         && request.resource.data.message is string
@@ -162,33 +447,30 @@ service cloud.firestore {
       allow read: if resource.data.published == true || isStaff();
       allow update, delete: if isStaff();
 
-      // New comments start hidden until staff publish them.
-      allow create: if request.resource.data.published == false
+      // Anyone may send one (patients have no account). New comments
+      // start hidden until staff publish them. The comment, name and
+      // booking reference may be empty; "aspects" lists which parts of
+      // the service the comment is about.
+      allow create: if request.resource.data.keys().hasOnly(['rating',
+            'type', 'comment', 'date', 'name', 'ref', 'aspects', 'published'])
+        && request.resource.data.published == false
         && request.resource.data.rating is int
         && request.resource.data.rating >= 1
         && request.resource.data.rating <= 5
         && request.resource.data.comment is string
-        && request.resource.data.comment.size() <= 2000;
-    }
-
-    // Free bus routes shown on the homepage. Anyone may read them; staff set
-    // the destination, departure times and frequency of routes A, B and C.
-    match /shuttleRoutes/{id} {
-      allow read: if true;
-      allow create, update: if isStaff()
-        && id in ['A', 'B', 'C']
-        && request.resource.data.keys().hasOnly(
-             ['destination', 'times', 'frequency', 'updatedAt'])
-        && request.resource.data.destination is string
-        && request.resource.data.destination.size() <= 200
-        && request.resource.data.times is list
-        && request.resource.data.times.size() <= 100
-        && (request.resource.data.get('frequency', null) == null
-            || (request.resource.data.frequency is int
-                && request.resource.data.frequency >= 1
-                && request.resource.data.frequency <= 1440))
-        && request.resource.data.updatedAt == request.time;
-      allow delete: if false;
+        && request.resource.data.comment.size() <= 2000
+        && request.resource.data.type is string
+        && request.resource.data.type.size() <= 40
+        && request.resource.data.date is timestamp
+        && request.resource.data.get('name', '') is string
+        && request.resource.data.get('name', '').size() <= 80
+        && request.resource.data.get('ref', '') is string
+        && request.resource.data.get('ref', '').size() <= 20
+        && request.resource.data.get('aspects', []) is list
+        && request.resource.data.get('aspects', []).size() <= 6
+        && request.resource.data.get('aspects', []).toSet().hasOnly([
+             'punctuality', 'driver', 'vehicle', 'safety', 'booking',
+             'assistance']);
     }
   }
 }

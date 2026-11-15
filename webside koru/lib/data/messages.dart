@@ -7,7 +7,7 @@ import '../lang.dart';
 import 'staff_auth.dart';
 
 // The topics a visitor can pick in the contact form.
-enum ContactTopic { booking, change, shuttle, other }
+enum ContactTopic { booking, change, other }
 
 extension ContactTopicText on ContactTopic {
   String label(BuildContext context) => switch (this) {
@@ -15,7 +15,6 @@ extension ContactTopicText on ContactTopic {
           context.t('Question about a booking', 'Rezervasyon hakkında soru'),
         ContactTopic.change =>
           context.t('Change or cancel a booking', 'Değişiklik veya iptal'),
-        ContactTopic.shuttle => context.t('Free bus', 'Ücretsiz servis'),
         ContactTopic.other => context.t('Other', 'Diğer'),
       };
 }

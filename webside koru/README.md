@@ -1,16 +1,16 @@
 # Koru Hospital Transport — Website (frontend)
 
-The patient-transport website for Koru Hospital, built with **Flutter Web** on a **Firebase** backend (Auth, Firestore, Cloud Functions).
+The patient-transport website for Koru Hospital, built with **Flutter Web** on a **Firebase** backend (Auth, Firestore, Hosting). There is no server code: the website writes to Firestore itself and the security rules check every write, so it runs on the free Spark plan.
 
 One app serves four kinds of people:
 
 | Who | Where | What they do |
 |---|---|---|
-| **Patients / visitors** | `/`, `/booking`, `/track`, `/contact`, `/feedback` | Book a ride, follow it live, send a message, rate the ride, see free bus times. |
-| **Coordinators (staff)** | `/admin/login` → `/admin` | Confirm → reserve → assign a driver. Manage drivers, messages, feedback and free buses. |
+| **Patients / visitors** | `/`, `/booking`, `/track`, `/contact`, `/feedback` | Book a ride, follow it live, send a message, rate the ride. |
+| **Coordinators (staff)** | `/admin/login` → `/admin` | Confirm → reserve → assign a driver. Manage drivers, messages and feedback. |
 | **Drivers** | `/driver/login` → `/driver` | See only their own trips, move each trip forward, share their location while driving. |
 
-The backend lives next to this folder: rules in [`../firestore.rules`](../firestore.rules), functions in [`../functions/index.js`](../functions/index.js).
+The backend lives next to this folder: the security rules in [`../firestore.rules`](../firestore.rules) and their tests in [`../firebase-tests/`](../firebase-tests/).
 
 ---
 
@@ -23,7 +23,7 @@ The backend lives next to this folder: rules in [`../firestore.rules`](../firest
 5. [Pages (routes)](#pages-routes)
 6. [How a booking moves](#how-a-booking-moves)
 7. [Data layer (`lib/data/`)](#data-layer-libdata)
-8. [Firestore collections and Cloud Functions](#firestore-collections-and-cloud-functions)
+8. [Firestore collections](#firestore-collections)
 9. [Sign-in and roles](#sign-in-and-roles)
 10. [How it is kept safe](#how-it-is-kept-safe)
 11. [Languages](#languages)
@@ -42,7 +42,7 @@ The backend lives next to this folder: rules in [`../firestore.rules`](../firest
 
 ```sh
 # 1. Start the local Firebase emulators (needs Java, see below)
-cd functions
+cd firebase-tests
 npm install
 npm run emulators
 
@@ -65,8 +65,8 @@ flutter run -d chrome --dart-define=USE_EMULATORS=true
 | `flutter` (Web, Material 3) | The whole UI |
 | `firebase_core` | Connecting to the Firebase project `project-transportation-5b6d8` |
 | `firebase_auth` | Email + password sign-in for staff and drivers |
-| `cloud_firestore` | Live data: bookings, drivers, messages, feedback, free buses, tracking |
-| `cloud_functions` | Server calls: create booking, look up booking, add/edit/delete drivers |
+| `cloud_firestore` | Live data: bookings, drivers, messages, feedback, tracking |
+| `crypto` | Turns the booking reference + tracking code into the tracking id (SHA-256) |
 | `flutter_map` + `latlong2` | OpenStreetMap maps (route map, driver's car). No API key needed |
 | `geolocator` | Driver's live location while driving |
 | `google_fonts` | Manrope font |
@@ -74,7 +74,7 @@ flutter run -d chrome --dart-define=USE_EMULATORS=true
 | `url_launcher` | Opens phone calls, WhatsApp, email and map links |
 | `flutter_localizations` | Date/time pickers in the chosen language, right-to-left for Arabic |
 
-Dart SDK `^3.5.0`. Cloud Functions and Firestore are in region **`asia-northeast1`**.
+Dart SDK `^3.5.0`. Firestore is in region **`asia-northeast1`**.
 
 ---
 
@@ -95,7 +95,6 @@ webside koru/
 │   │   ├── drivers.dart       Driver model + DriverStore (admin only)
 │   │   ├── feedback.dart      Patient comments + FeedbackStore
 │   │   ├── messages.dart      Contact form messages + MessageStore
-│   │   ├── shuttles.dart      Free bus routes, time parsing, next departure
 │   │   ├── staff_auth.dart    Staff / driver sign-in (StaffAuth)
 │   │   └── tracking.dart      Patient lookup + live tracking
 │   │
@@ -116,7 +115,7 @@ webside koru/
 │       ├── route_map.dart     Map with pickup, destination and driver
 │       └── color_picker.dart  Change the site's main color
 │
-├── assets/images/             Logos (and later: driver photos)
+├── assets/images/             Logos and branch photos
 ├── web/                       index.html, favicon, PWA manifest
 ├── test/                      Unit tests (flutter test)
 ├── tool/flow_check.dart       Full end-to-end check against the emulators
@@ -131,7 +130,7 @@ webside koru/
 [`lib/main.dart`](lib/main.dart):
 
 1. Connects to Firebase **and** loads the saved main color, in parallel.
-2. If started with `--dart-define=USE_EMULATORS=true`, points Auth (9099), Firestore (8080) and Functions (5001) at `localhost`.
+2. If started with `--dart-define=USE_EMULATORS=true`, points Auth (9099) and Firestore (8080) at `localhost`.
 3. `staffAuth.load()` — if a staff member or driver was signed in before the refresh, they stay signed in.
 4. `runApp(KoruApp())` — builds `MaterialApp` with the theme, the current language and the routes.
 
@@ -145,7 +144,7 @@ webside koru/
 
 | Route | File | What is on it |
 |---|---|---|
-| `/` | [home_page.dart](lib/pages/home_page.dart) | Hero with a quick **booking bar** (service, from, to, date) → services cards → **next free buses** (live, refreshed every 30 s, Ankara time) → published patient comments → branch finder → "Our drivers". Menu links like *Shuttle* and *Directions* scroll to these parts. |
+| `/` | [home_page.dart](lib/pages/home_page.dart) | Hero with a quick **booking bar** (service, from, to, date) → services cards → published patient comments → branch finder → "Our drivers". Menu links like *Directions* and *Our drivers* scroll to these parts. |
 | `/booking` | [booking_page.dart](lib/pages/booking_page.dart) | 3-step form: **1** transport type, **2** patient name, phone, mobility needs (wheelchair, stretcher, oxygen, companion), notes, **3** pickup address, destination branch, tap-to-set pickup on the map, date, time, KVKK consent. A summary and an "Emergency? Call 112" box sit next to the form. After sending, shows the reference (`KR-1001`) and the secret 8-letter tracking code. Can be pre-filled from the homepage via `BookingDraft`. |
 | `/track` | [track_page.dart](lib/pages/track_page.dart) | Patient types reference + code. Then shows live progress steps, booking details, driver's first name and plate, and the car on the map while driving. The browser remembers the booking, so a refresh keeps it open. |
 | `/contact` | [contact_page.dart](lib/pages/contact_page.dart) | Phone / WhatsApp / email cards, a contact form (saved to `messages`), and the branch list. |
@@ -170,7 +169,6 @@ A side menu (a drawer on small screens) switches between sections:
 - **Drivers** — add (email + first password), edit (empty password keeps the old one), delete, and switch accounts on/off. A switched-off driver cannot sign in or see any booking.
 - **Messages** — contact form messages, newest first; mark as answered or delete. The menu shows how many are unanswered.
 - **Feedback** — average rating, every comment, show/hide on the homepage, delete.
-- **Free buses** — for each route (A Çukurambar, B Sincan, C Kavaklıdere): destination, departure times (typed like `08:00, 9:30 12:00`) and frequency in minutes.
 
 The side menu also has the language switch, the color picker and sign-out.
 
@@ -187,7 +185,7 @@ The side menu also has the language switch, the color picker and sign-out.
 
 ```mermaid
 flowchart LR
-  P([Patient: booking form]) -->|createBooking| N[New request]
+  P([Patient: booking form]) -->|book| N[New request]
   N -->|Admin: Confirm| C[Confirmed]
   C -->|Admin: Reserve<br/>date, time, type| R[Reserved]
   R -->|Admin: Assign driver<br/>driver + plate| A[Arranged]
@@ -196,84 +194,103 @@ flowchart LR
   T2 -->|I have arrived| T3[Arrived]
   T3 -->|Patient on board| T4[To the hospital 📍]
   T4 -->|Complete trip| T5[Completed]
+  N & C & R & A -.->|Admin: Cancel| X[Cancelled]
+  X -.->|Admin: Restore| N
 ```
 
-- The **stage** (`Stage` enum in [bookings.dart](lib/data/bookings.dart)) is moved by the coordinator: `newRequest → confirmed → reserved → arranged`.
+- The **stage** (`Stage` enum in [bookings.dart](lib/data/bookings.dart)) is moved by the coordinator: `newRequest → confirmed → reserved → arranged`. From any stage the coordinator can **cancel** (frees the time slot; the patient sees "Booking cancelled") or **reschedule** (moves it to another free hour; the patient sees the new time). A cancelled booking can be **restored** as a new request if its hour still has room.
 - The **trip status** (`TripStatus` enum) is moved by the driver: `assigned → enRoute → arrived → onBoard → completed`. 📍 = location shared.
 - Every change shows up live on the patient's `/track` page and in the admin dashboard.
+- A coordinator with the dashboard open gets a pop-up for each new booking, and the side menu shows how many requests wait to be confirmed. (Email or SMS alerts would need server code; there is none.)
+
+### Time slots and capacity
+
+- Bookings are taken in **one-hour slots, 00:00 to 23:00**. The booking form shows the slots of the chosen day live, with places left; full, closed and past hours cannot be picked. Picking a full one shows *"This time slot is fully booked. Please choose another available time."* with the nearest free times that day.
+- `slots/{YYYY-MM-DD}T{HH}` counts the bookings in each hour. A new booking adds one in the same transaction, and the **rules refuse it if that goes over the limit**, so two patients can never take the last place, even with a modified browser.
+- The limit is **3 per hour** until a coordinator changes it in **Admin → Schedule** (“Bookings per hour”). One hour can get its own limit, or be closed (limit 0), from its ⋮ menu.
+- **Admin → Schedule** shows a day at a time: each hour's status (Available / Booked / Fully booked / Closed), places used out of the limit, and who booked it, when, and the booking's stage, with reschedule, cancel and call buttons.
+- Bookings made before slots existed hold no place until a coordinator saves them (confirm, reschedule…), which then takes one.
 
 ---
 
 ## Data layer (`lib/data/`)
 
-Each file holds a model plus a **store**: a `ChangeNotifier` that listens to a Firestore collection and calls `notifyListeners()` when anything changes. There is **one global instance** of each (`bookingStore`, `driverStore`, `feedbackStore`, `messageStore`, `shuttleStore`, `staffAuth`, `tracking`). Pages listen to them with `ListenableBuilder`.
+Each file holds a model plus a **store**: a `ChangeNotifier` that listens to a Firestore collection and calls `notifyListeners()` when anything changes. There is **one global instance** of each (`bookingStore`, `driverStore`, `feedbackStore`, `messageStore`, `staffAuth`, `tracking`). Pages listen to them with `ListenableBuilder`.
 
 Stores that hold private data listen to `staffAuth`: when someone signs in or out, they cancel the old Firestore listener, clear their list and start the right query.
 
 | Store | Collection | Who sees what | Writes |
 |---|---|---|---|
-| `bookingStore` | `bookings` | Staff: all (newest first). Driver: only `driverUid == me`. Visitors: nothing. | `add()` → `createBooking` function. `advance()` saves the admin's changes. `nextTripStep()`, `shareLocation()` for drivers. |
-| `driverStore` | `drivers` | Staff only, sorted by name. | `add/edit/delete` → Cloud Functions. `setActive()` writes directly. |
+| `bookingStore` | `bookings` | Staff: all (newest first). Driver: only `driverUid == me`. Visitors: nothing. | `add()` takes the next number and saves the booking + its tracking copy in one transaction. `advance()` saves the admin's changes. `nextTripStep()`, `shareLocation()` for drivers. Every change also rewrites the tracking copy in the same batch. |
+| `driverStore` | `drivers` | Staff only, sorted by name. | `add()` creates the sign-in account through a second Firebase app (so the coordinator stays signed in), then the profile. `edit()` (name, phone, vehicle), `sendPasswordReset()`, `delete()` (profile only), `setActive()`. |
 | `feedbackStore` | `feedback` | Staff: all. Visitors: only `published == true`. | `add()` (anyone), `setPublished()`, `remove()` (staff). |
 | `messageStore` | `messages` | Staff only. | `send()` (anyone), `setHandled()`, `remove()` (staff). |
-| `shuttleStore` | `shuttleRoutes` | Everyone. | `save()` (staff). Bad values in the database are ignored so they never show on the homepage. |
-| `tracking` | `tracking/{token}` | Whoever holds the token. | `lookup()` → `lookupBooking` function. Token kept in `shared_preferences`. |
+| `tracking` | `tracking/{token}` | Whoever holds the token. | `lookup()` works out the id from reference + code and reads it. Token kept in `shared_preferences`. |
 | `staffAuth` | `staff`, `drivers` | — | `signIn()`, `signOut()`, `sendPasswordReset()`. |
 
-Useful helpers in [bookings.dart](lib/data/bookings.dart): `ContactInfo` (phone, WhatsApp, email, address), `branches`, `branchLocations`, `formatDate()` (`25.10.2026`), `formatTime()` (`09:30`), `cloudFunctions` (Functions in the right region).
-
-Useful helpers in [shuttles.dart](lib/data/shuttles.dart): `normalizeTime()`, `parseTimes()`, `ankaraNow()` (Turkey is UTC+3 all year), `nextDeparture()`.
+Useful helpers in [bookings.dart](lib/data/bookings.dart): `ContactInfo` (phone, WhatsApp, email, address), `branches`, `branchLocations`, `formatDate()` (`25.10.2026`), `formatTime()` (`09:30`), `trackingIdFor()` (reference + code → tracking id).
 
 ---
 
-## Firestore collections and Cloud Functions
-
-### Collections
+## Firestore collections
 
 | Collection | Document id | Holds |
 |---|---|---|
-| `bookings` | reference, e.g. `KR-1001` | Full booking: patient, phone, type, from, branch, date, time, needs, notes, pickup, stage, vehicle, driver, driverUid, trip, driverLocation, createdAt |
-| `tracking` | long random token | Safe copy for the patient: no name, phone or address |
-| `bookingSecrets` | reference | Hash of the tracking code (no browser can read it) |
+| `bookings` | reference, e.g. `KR-1001` | Full booking: patient, phone, type, from, branch, date, time, needs, notes, pickup, stage, vehicle, driver, driverUid, trip, driverLocation, trackingId, slot, createdAt |
+| `tracking` | `sha256("<reference>:<code>")` in hex | Safe copy for the patient: no name, phone or address |
 | `counters` | — | Next booking number |
+| `slots` | `YYYY-MM-DDTHH`, e.g. `2026-11-03T09` | date, count (bookings in that hour), capacity (own limit, 0 = closed, null = usual), lastRef |
+| `settings` | `booking` | capacity (usual bookings per hour), updatedAt |
 | `staff` | Auth uid | Coordinators (added by hand in the Firebase console) |
 | `drivers` | Auth uid | name, phone, vehicle, email, active |
 | `messages` | auto | Contact form messages |
 | `feedback` | auto | Patient comments |
-| `shuttleRoutes` | `A`, `B`, `C` | destination, times, frequency, updatedAt |
-
-### Cloud Functions the website calls
-
-| Function | Called from | Does |
-|---|---|---|
-| `createBooking` | Booking page | Checks the form, gives the next number, creates the tracking code and token. |
-| `lookupBooking` | Track page | Checks reference + code, returns the tracking token. Locks the reference for 15 min after 5 wrong codes. |
-| `createDriver` / `updateDriver` / `deleteDriver` | Admin → Drivers | Manage the driver's Auth account and `drivers/{uid}` profile (staff only). |
-| `syncTracking` | *(trigger, not called)* | Runs on every `bookings/{ref}` change and keeps `tracking/{token}` up to date. |
 
 ---
 
 ## Sign-in and roles
 
-Defined in [staff_auth.dart](lib/data/staff_auth.dart). Signing in with Firebase Auth is **not enough** — the account must also be on a list:
+Defined in [staff_auth.dart](lib/data/staff_auth.dart). Every page needs a sign-in; the sign-in page (`/`) has three tabs. Signing in with Firebase Auth is **not enough** — the account must also be on a list:
 
-| Role | Needs | Added by |
-|---|---|---|
-| Staff | a document at `staff/{uid}` | Hand, in the Firebase console |
-| Driver | `drivers/{uid}` with `active == true` | Staff, in Admin → Drivers |
+| Tab | Needs | Opens | Added by |
+|---|---|---|---|
+| Staff | `staff/{uid}` (any role) | the main site (`/home`): book rides, see information | Firebase console (see below) |
+| Admin | `staff/{uid}` with `role: "admin"` (or no role) | the admin dashboard | Firebase console (see below) |
+| Driver | `drivers/{uid}` with `active == true` | the driver dashboard | Admin → Drivers |
+
+The tab decides: an admin account signed in with the Staff tab only gets the main site (remembered in the browser, so it stays that way after a refresh).
+
+What each role may do (enforced by [`../firestore.rules`](../firestore.rules)):
+
+| | Visitor / patient | Driver | Staff |
+|---|---|---|---|
+| Book a ride (in a slot with room) | ✅ | ✅ | ✅ |
+| See how full each hour is | ✅ | ✅ | ✅ |
+| Follow own booking (ref + tracking code) | ✅ | ✅ | ✅ |
+| Read bookings | — | only their assigned trips | all |
+| Move a trip forward, share location | — | own arranged trips | — |
+| Confirm, reserve, assign driver, cancel, restore, reschedule | — | — | ✅ |
+| Set bookings per hour, close an hour | — | — | ✅ |
+| Drivers, messages, feedback | send messages and feedback | — | ✅ |
+| Add, change and remove staff accounts | — | — | admins only, never their own |
 
 If the account is not on the right list, the app signs it out again and shows "not allowed". The Firestore rules check the same lists, so this cannot be bypassed from the browser.
 
-**Adding the first coordinator:** create the user in *Firebase console → Authentication*, copy its UID, then create a document `staff/<UID>` in Firestore (any fields, e.g. `name`).
+**Adding the first admin:** create the user in *Firebase console → Authentication*, copy its UID, then create a document `staff/<UID>` in Firestore (no `role` field, or `role: "admin"`). Add every other staff member or admin the same way (`role: "staff"` for staff).
+
+**Staff vs admin in the rules:** the rules let every account on the staff list manage bookings, drivers, messages and feedback; only managing staff accounts is limited to admins. Keeping staff out of the rest of the dashboard is done by the website.
 
 ---
 
 ## How it is kept safe
 
-- Bookings are created only by the `createBooking` Cloud Function (it hands out the number and the tracking code). Browsers cannot write bookings directly.
-- Booking references are sequential, so a reference alone opens nothing. `lookupBooking` checks reference + code and locks the reference for 15 minutes after 5 wrong codes.
-- The tracking code is stored only as a hash in `bookingSecrets/`, which no browser can read.
-- The patient's live page reads `tracking/{token}`, which holds a copy without personal details (no name, phone or address), kept up to date by the `syncTracking` function. The token is long and random, and the collection cannot be listed.
+There is no server code, so [`../firestore.rules`](../firestore.rules) is what protects the data. [`../firebase-tests/test/flow.test.js`](../firebase-tests/test/flow.test.js) tries each of the attacks below and checks they are refused.
+
+- Anyone may book, but only as a new request with no driver, every field checked. The number must be the counter's next one, and the counter must go up in the same write, so numbers cannot be skipped, reused or chosen.
+- The tracking code is never saved. The patient's tracking copy is stored at `tracking/sha256("<reference>:<code>")`, so only someone with both can open it, and the collection cannot be listed. Booking references are sequential, so a reference alone opens nothing. With 8-character codes (about 850 billion per reference), guessing is not practical.
+- The tracking copy holds no personal details (no name, phone or address; the driver's first name only; their location only while driving). The rules check it matches the booking, and every change to a booking must update it in the same write.
+- Anyone can sign up a Firebase account, but that alone gives no access: only staff can create a `drivers/{uid}` profile, and `staff/` can only be written in the console.
+- Drivers can read only the bookings assigned to them, and can change only the trip step (one step forward) and their location.
 - Drivers can read only the bookings assigned to them, and can change only the trip step (one step forward) and their location.
 - Visitors can only *add* messages and feedback; only staff can read all of them.
 
@@ -342,7 +359,7 @@ All in [theme.dart](lib/theme.dart).
 
 ## Running locally with emulators
 
-Never test against the real database. The emulators run Auth, Firestore and Functions on your computer.
+Never test against the real database. The emulators run Auth and Firestore on your computer.
 
 Needs:
 - Flutter (Dart ≥ 3.5) and Chrome
@@ -350,9 +367,9 @@ Needs:
 - Java: `brew install openjdk@21`, then put `/opt/homebrew/opt/openjdk@21/bin` on your PATH
 
 ```sh
-cd functions
+cd firebase-tests
 npm install
-npm run emulators            # starts Auth/Firestore/Functions + adds coordinator@koru.test / staff-pass-123
+npm run emulators            # starts Auth/Firestore + adds coordinator@koru.test / staff-pass-123
 # in another terminal:
 cd "webside koru"
 flutter run -d chrome --dart-define=USE_EMULATORS=true
@@ -367,8 +384,8 @@ Without `--dart-define=USE_EMULATORS=true` the app talks to the **real** Firebas
 ## Tests
 
 ```sh
-cd functions
-npm run test:emulators   # backend + security rules: whole flow and what must be refused
+cd firebase-tests
+npm run test:emulators   # security rules: whole flow and what must be refused
 npm run test:app         # the app's own code in Chrome: booking → tracking → admin → driver → completed
 cd "../webside koru" && flutter test
 ```
@@ -376,8 +393,7 @@ cd "../webside koru" && flutter test
 | Test | Checks |
 |---|---|
 | [test/lang_test.dart](test/lang_test.dart) | Translations, `{}` values, English fallback |
-| [test/shuttles_test.dart](test/shuttles_test.dart) | Time parsing and next free bus |
-| [tool/flow_check.dart](tool/flow_check.dart) | Full flow through the real app code against emulators: patient books → looks up → tracks; coordinator adds driver, confirms, reserves, assigns; driver drives to completed; free bus routes. Prints `FLOW OK` or `FLOW FAILED`. Run with `npm run test:app`. |
+| [tool/flow_check.dart](tool/flow_check.dart) | Full flow through the real app code against emulators: patient books → looks up → tracks; coordinator adds driver, confirms, reserves, assigns; driver drives to completed. Prints `FLOW OK` or `FLOW FAILED`. Run with `npm run test:app`. |
 
 Also run `flutter analyze` before pushing.
 
@@ -389,24 +405,27 @@ Hosting serves `webside koru/build/web` (see [`../firebase.json`](../firebase.js
 
 ```sh
 cd "webside koru"
-flutter build web
+flutter build web --dart-define=BUILD=$(date +%Y-%m-%d.%H%M)
 cd ..
 firebase deploy --only hosting
 ```
 
+`BUILD` is the version shown at the bottom of the admin menu, so you can tell which version a browser is running. Browsers always check for new files (`Cache-Control: no-cache` in `firebase.json`), and the app code is loaded with a `?v=` that changes every build ([web/flutter_bootstrap.js](web/flutter_bootstrap.js)), so nobody keeps an old version after a deploy.
+
 ### Going live (first time)
 
-1. Cloud Functions need the **Blaze** (pay-as-you-go) plan on the Firebase project.
-2. Deploy the backend and the new site **together**. The new rules stop the old site from saving bookings, so the old site must not stay online after the rules change:
+1. Everything runs on the free **Spark** plan (no Cloud Functions).
+2. Deploy the rules and the new site **together**, since each needs the other:
    ```sh
-   firebase deploy --only functions,firestore:rules
+   cd "webside koru" && flutter build web && cd ..
+   firebase deploy --only firestore:rules,hosting
    ```
-   then publish the new web build (`flutter build web` + `firebase deploy --only hosting`).
 3. Add the first coordinator (see [Sign-in and roles](#sign-in-and-roles)).
 4. In the admin dashboard, open **Drivers** and add each driver (email + first password).
-5. Open **Free buses** and set each route's destination, departure times and frequency. Until a route has a destination and at least one time, the homepage shows "Schedule to be announced".
 
-Bookings made before this change have no tracking code, so patients cannot track them. They still work in the admin dashboard.
+Bookings made before this change have no tracking copy, so patients cannot track them. They still work in the admin dashboard.
+
+**Removing a driver** deletes their profile, which stops them using the driver dashboard. Their sign-in account stays in *Firebase console → Authentication*; delete it there to free the email. A driver's sign-in email can only be changed there too.
 
 ---
 
@@ -418,7 +437,7 @@ Bookings made before this change have no tracking code, so patients cannot track
 | Real map points of each branch | `branchLocations` in [lib/data/bookings.dart](lib/data/bookings.dart) |
 | Branch addresses, phones, transit, parking | [contact_page.dart](lib/pages/contact_page.dart) (`_Branches`) and [home_page.dart](lib/pages/home_page.dart) (`_BranchFinder`) |
 | Hero photo | `_Hero` in [home_page.dart](lib/pages/home_page.dart) |
-| Real drivers + photos (`assets/images/driver_1.jpg`, …) | `_Drivers` in [home_page.dart](lib/pages/home_page.dart) — with the drivers' permission |
+| Real drivers (name, start year, vehicle, languages) | `_Drivers` in [home_page.dart](lib/pages/home_page.dart) — with the drivers' permission |
 | Notify coordinators of new bookings (e.g. email) | TODO in [booking_page.dart](lib/pages/booking_page.dart) |
 | Native-speaker check of FR / AR / RU | [translations.dart](lib/translations.dart) |
 
@@ -434,13 +453,13 @@ Search the code for `TODO` and `[` placeholders like `[PHONE]` to find them all.
 3. To show it in the top menu, add a value to `NavItem` (with its label) and handle it in `openNavItem()` in [site_layout.dart](lib/widgets/site_layout.dart).
 
 **Add a hospital branch**
-Add it to `branches` and `branchLocations` in [bookings.dart](lib/data/bookings.dart). For a free bus route, also add a value to `ShuttleBranch` in [shuttles.dart](lib/data/shuttles.dart).
+Add it to `branches` and `branchLocations` in [bookings.dart](lib/data/bookings.dart).
 
 **Add a transport type or mobility need**
-Add the value to `TransportType` / `MobilityNeed` in [bookings.dart](lib/data/bookings.dart), give it a label (and icon), add translations, and allow it in `createBooking` in [`../functions/index.js`](../functions/index.js).
+Add the value to `TransportType` / `MobilityNeed` in [bookings.dart](lib/data/bookings.dart), give it a label (and icon), add translations, and allow it in `isNewBooking` / `isValidBooking` in [`../firestore.rules`](../firestore.rules).
 
 **Add a field to a booking**
-Add it to `Booking`, `_toDoc` and `_fromDoc` in [bookings.dart](lib/data/bookings.dart), to `createBooking` (and `syncTracking` if the patient should see it) in the functions, and update the `bookings` rules in [`../firestore.rules`](../firestore.rules).
+Add it to `Booking`, `_toDoc` and `_fromDoc` (and `_trackingDoc` if the patient should see it) in [bookings.dart](lib/data/bookings.dart), and update `isNewBooking` (and `isTrackingOf`) in [`../firestore.rules`](../firestore.rules).
 
 **Change the default color**
 Change the first entry of `colorPresets` in [theme.dart](lib/theme.dart).

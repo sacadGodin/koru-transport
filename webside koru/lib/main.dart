@@ -4,7 +4,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
-import 'data/bookings.dart';
 import 'data/staff_auth.dart';
 import 'firebase_options.dart';
 import 'lang.dart';
@@ -32,7 +31,6 @@ Future<void> main() async {
   if (const bool.fromEnvironment('USE_EMULATORS')) {
     await FirebaseAuth.instance.useAuthEmulator('localhost', 9099);
     FirebaseFirestore.instance.useFirestoreEmulator('localhost', 8080);
-    cloudFunctions.useFunctionsEmulator('localhost', 5001);
   }
   // Keep a staff member or driver signed in after a page refresh.
   await staffAuth.load();
@@ -93,22 +91,26 @@ class _KoruAppState extends State<KoruApp> {
         // Makes the current language available to every page and dialog
         // (see context.t in lang.dart).
         builder: (context, child) => LangScope(child: child!),
-        // Each page has its own address:
-        //   /              homepage
+        // Each page has its own address. Every page except /feedback needs
+        // a staff, admin or driver sign-in first; until then it shows the
+        // sign-in page. /feedback is open to patients (no account needed).
+        //   /              sign-in page (then the right dashboard opens)
+        //   /home          homepage
         //   /booking       book transport
-        //   /track         patients follow their booking live
+        //   /track         follow a booking live
         //   /contact       contact
-        //   /feedback      patients rate their ride
-        //   /admin/login   staff sign-in
+        //   /feedback      patient feedback (public, works on a shared tablet)
+        //   /admin/login   sign-in page, admin selected
         //   /admin         admin dashboard
-        //   /driver/login  driver sign-in
+        //   /driver/login  sign-in page, driver selected
         //   /driver        driver dashboard
         initialRoute: '/',
         routes: {
-          '/': (_) => const HomePage(),
-          '/booking': (_) => const BookingPage(),
-          '/track': (_) => const TrackPage(),
-          '/contact': (_) => const ContactPage(),
+          '/': (_) => const AdminLoginPage(role: Role.staff),
+          '/home': (_) => const _SignedIn(HomePage()),
+          '/booking': (_) => const _SignedIn(BookingPage()),
+          '/track': (_) => const _SignedIn(TrackPage()),
+          '/contact': (_) => const _SignedIn(ContactPage()),
           '/feedback': (_) => const FeedbackPage(),
           '/admin/login': (_) => const AdminLoginPage(),
           '/admin': (_) => const AdminDashboardPage(),
@@ -116,6 +118,24 @@ class _KoruAppState extends State<KoruApp> {
           '/driver': (_) => const DriverDashboardPage(),
         },
       ),
+    );
+  }
+}
+
+// Shows [page] only to a signed-in staff member, admin or driver; anyone
+// else sees the sign-in page instead.
+class _SignedIn extends StatelessWidget {
+  const _SignedIn(this.page);
+
+  final Widget page;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: staffAuth,
+      builder: (context, _) => staffAuth.isStaff || staffAuth.isDriver
+          ? page
+          : const AdminLoginPage(role: Role.staff),
     );
   }
 }
