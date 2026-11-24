@@ -188,6 +188,20 @@ class _TrackPageState extends State<TrackPage> {
   }
 }
 
+// Index in the progress list (request, confirmed, reserved, then one step
+// per trip status) of the step the booking has reached.
+int progressStep(TrackingInfo info) => info.trip != null
+    ? Stage.arranged.index + info.trip!.index
+    : switch (info.stage) {
+        Stage.newRequest => 0,
+        Stage.confirmed => 1,
+        Stage.reserved => 2,
+        // Arranged without a trip status (older bookings).
+        Stage.arranged => 3,
+        // Shown as a "cancelled" card instead.
+        Stage.cancelled => 0,
+      };
+
 // One step of the progress list on the tracking page.
 typedef _Step = ({String label, IconData icon});
 
@@ -292,25 +306,12 @@ class _TrackingViewState extends State<_TrackingView> {
           (label: trip.label(context, info.type, info.branch), icon: trip.icon),
       ];
 
-  // Index in [_steps] of the step the booking has reached.
-  int _current(TrackingInfo info) => info.trip != null
-      ? Stage.values.length - 1 + info.trip!.index
-      : switch (info.stage) {
-          Stage.newRequest => 0,
-          Stage.confirmed => 1,
-          Stage.reserved => 2,
-          // Arranged without a trip status (older bookings).
-          Stage.arranged => 3,
-          // Shown by [_cancelled] instead.
-          Stage.cancelled => 0,
-        };
-
   // Card with the steps: done = blue check, current = big and blue,
   // not yet = grey. Plus the map while the driver is driving.
   Widget _progress(BuildContext context, TrackingInfo info) {
     if (info.stage == Stage.cancelled) return _cancelled(context);
     final steps = _steps(context, info);
-    final current = _current(info);
+    final current = progressStep(info);
     return Container(
       padding: EdgeInsets.all(Responsive.isMobile(context) ? 20 : 32),
       decoration: BoxDecoration(
