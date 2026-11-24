@@ -84,15 +84,18 @@ enum TransportType { ambulance, wheelchair, standard, airport, toAirport }
 
 extension TransportTypeText on TransportType {
   // Name shown to the user, in the current language.
-  String label(BuildContext context) => switch (this) {
-        TransportType.ambulance => context.t('Ambulance', 'Ambulans'),
+  String label(BuildContext context) => labelIn(context.t);
+
+  // The same in a chosen language (e.g. the PDF report).
+  String labelIn(String Function(String en, String tr) t) => switch (this) {
+        TransportType.ambulance => t('Ambulance', 'Ambulans'),
         TransportType.wheelchair =>
-          context.t('Koru Hotel transfer', 'Koru Otel transferi'),
-        TransportType.standard => context.t('Standard car', 'Standart araç'),
+          t('Koru Hotel transfer', 'Koru Otel transferi'),
+        TransportType.standard => t('Standard car', 'Standart araç'),
         TransportType.airport =>
-          context.t('Airport → hospital', 'Havalimanı → hastane'),
+          t('Airport → hospital', 'Havalimanı → hastane'),
         TransportType.toAirport =>
-          context.t('Hospital → airport', 'Hastane → havalimanı'),
+          t('Hospital → airport', 'Hastane → havalimanı'),
       };
 
   // Rides that start at the hospital branch and end somewhere else.
@@ -143,9 +146,12 @@ extension MobilityNeedText on MobilityNeed {
 enum BookedBy { coordinator, translator }
 
 extension BookedByText on BookedBy {
-  String label(BuildContext context) => switch (this) {
-        BookedBy.coordinator => context.t('Coordinator', 'Koordinatör'),
-        BookedBy.translator => context.t('Translator', 'Tercüman'),
+  String label(BuildContext context) => labelIn(context.t);
+
+  // The same in a chosen language (e.g. the PDF report).
+  String labelIn(String Function(String en, String tr) t) => switch (this) {
+        BookedBy.coordinator => t('Coordinator', 'Koordinatör'),
+        BookedBy.translator => t('Translator', 'Tercüman'),
       };
 }
 
@@ -157,12 +163,15 @@ extension BookedByText on BookedBy {
 enum Stage { newRequest, confirmed, reserved, arranged, cancelled }
 
 extension StageText on Stage {
-  String label(BuildContext context) => switch (this) {
-        Stage.newRequest => context.t('New requests', 'Yeni talepler'),
-        Stage.confirmed => context.t('Confirmed', 'Onaylandı'),
-        Stage.reserved => context.t('Reserved', 'Rezerve edildi'),
-        Stage.arranged => context.t('Arranged', 'Araç atandı'),
-        Stage.cancelled => context.t('Cancelled', 'İptal edildi'),
+  String label(BuildContext context) => labelIn(context.t);
+
+  // The same in a chosen language (e.g. the PDF report).
+  String labelIn(String Function(String en, String tr) t) => switch (this) {
+        Stage.newRequest => t('New requests', 'Yeni talepler'),
+        Stage.confirmed => t('Confirmed', 'Onaylandı'),
+        Stage.reserved => t('Reserved', 'Rezerve edildi'),
+        Stage.arranged => t('Arranged', 'Araç atandı'),
+        Stage.cancelled => t('Cancelled', 'İptal edildi'),
       };
 
   // What the admin does next with bookings in this stage.

@@ -14,6 +14,15 @@ class ReportCount {
   }
 }
 
+// One coordinator or translator and the bookings they made. [role] is null
+// for bookings made before the form asked who was booking.
+class BookerCount extends ReportCount {
+  BookerCount(this.role, this.name);
+
+  final BookedBy? role;
+  final String name;
+}
+
 // What the monthly report shows: every booking whose ride is in [month],
 // cancelled ones counted apart.
 class MonthReport {
@@ -37,6 +46,13 @@ class MonthReport {
       total.add(b);
       byType.putIfAbsent(b.type, ReportCount.new).add(b);
       byBranch.putIfAbsent(b.branch, ReportCount.new).add(b);
+      byRole.putIfAbsent(b.bookedBy, ReportCount.new).add(b);
+      // The same person typed as "ahmet" or "Ahmet " counts once.
+      final name = b.bookedByName.trim().replaceAll(RegExp(r'\s+'), ' ');
+      _byBooker
+          .putIfAbsent('${b.bookedBy?.name}|${name.toLowerCase()}',
+              () => BookerCount(b.bookedBy, name))
+          .add(b);
     }
   }
 
@@ -50,6 +66,28 @@ class MonthReport {
   int cancelled = 0;
   final Map<TransportType, ReportCount> byType = {};
   final Map<String, ReportCount> byBranch = {};
+  // Bookings per role (null = not recorded, older bookings).
+  final Map<BookedBy?, ReportCount> byRole = {};
+  final Map<String, BookerCount> _byBooker = {};
+
+  // Each coordinator and translator, most bookings first (not recorded
+  // last).
+  List<BookerCount> get bookers => _byBooker.values.toList()
+    ..sort((a, b) {
+      if ((a.role == null) != (b.role == null)) return a.role == null ? 1 : -1;
+      final byCount = b.bookings.compareTo(a.bookings);
+      return byCount != 0 ? byCount : a.name.compareTo(b.name);
+    });
+
+  // Share of the month's requests that were cancelled, 0 to 100.
+  double get cancelRate =>
+      bookings.isEmpty ? 0 : cancelled * 100 / bookings.length;
+
+  // The branch or destination with the most bookings (null if none).
+  MapEntry<String, ReportCount>? get busiestBranch => byBranch.entries.isEmpty
+      ? null
+      : byBranch.entries
+          .reduce((a, b) => b.value.bookings > a.value.bookings ? b : a);
 
   ReportCount get airportToHospital =>
       byType[TransportType.airport] ?? ReportCount();
