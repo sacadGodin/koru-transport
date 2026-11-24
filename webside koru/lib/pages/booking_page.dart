@@ -45,6 +45,9 @@ class _BookingPageState extends State<BookingPage> {
   final _step2Key = GlobalKey<FormState>();
   final _patient = TextEditingController();
   final _phone = TextEditingController();
+  // Who is filling in the form for the patient, and their name.
+  BookedBy? _bookedBy;
+  final _bookedByName = TextEditingController();
   final _notes = TextEditingController();
   final Set<MobilityNeed> _needs = {};
   // People riding, the patient included.
@@ -106,7 +109,7 @@ class _BookingPageState extends State<BookingPage> {
 
   @override
   void dispose() {
-    for (final c in [_patient, _phone, _notes, _from]) {
+    for (final c in [_patient, _phone, _bookedByName, _notes, _from]) {
       c.dispose();
     }
     super.dispose();
@@ -121,7 +124,8 @@ class _BookingPageState extends State<BookingPage> {
   void _next() {
     final ok = switch (_step) {
       0 => _type != null,
-      1 => _step2Key.currentState!.validate(),
+      // validate() runs first so every field shows its error at once.
+      1 => _step2Key.currentState!.validate() & (_bookedBy != null),
       _ => false,
     };
     setState(() {
@@ -154,6 +158,8 @@ class _BookingPageState extends State<BookingPage> {
         needs: {..._needs},
         passengers: _passengers,
         notes: _notes.text.trim(),
+        bookedBy: _bookedBy!,
+        bookedByName: _bookedByName.text.trim(),
         // A map point is only tapped for pickups away from the hospital.
         pickup: _type!.fromHospital ? null : _pickup,
       );
@@ -190,12 +196,13 @@ class _BookingPageState extends State<BookingPage> {
 
   // Clears everything to start a new booking.
   void _reset() {
-    for (final c in [_patient, _phone, _notes, _from]) {
+    for (final c in [_patient, _phone, _bookedByName, _notes, _from]) {
       c.clear();
     }
     setState(() {
       _step = 0;
       _type = null;
+      _bookedBy = null;
       _needs.clear();
       _passengers = 1;
       _branch = branches.first;
@@ -438,7 +445,8 @@ class _BookingPageState extends State<BookingPage> {
     );
   }
 
-  // Step 2: patient name, phone, number of people, mobility needs and notes.
+  // Step 2: patient name, phone, who is booking (coordinator or translator)
+  // and their name, number of people, mobility needs and notes.
   Widget _stepPatient() {
     return Form(
       key: _step2Key,
@@ -460,6 +468,50 @@ class _BookingPageState extends State<BookingPage> {
                 validator: _required,
                 keyboardType: TextInputType.phone),
           ),
+          const SizedBox(height: 16),
+          FieldLabel(
+            context.t('Booked by', 'Rezervasyonu yapan'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final role in BookedBy.values)
+                      ChoiceChip(
+                        label: Text(role.label(context)),
+                        selected: _bookedBy == role,
+                        onSelected: (_) => setState(() => _bookedBy = role),
+                      ),
+                  ],
+                ),
+                if (_showErrors && _bookedBy == null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                      context.t('Please choose Coordinator or Translator.',
+                          'Lütfen Koordinatör veya Tercüman seçin.'),
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                          fontSize: 12)),
+                ],
+              ],
+            ),
+          ),
+          // Once chosen: the coordinator's or translator's own name.
+          if (_bookedBy != null) ...[
+            const SizedBox(height: 16),
+            FieldLabel(
+              switch (_bookedBy!) {
+                BookedBy.coordinator =>
+                  context.t('Coordinator name', 'Koordinatörün adı'),
+                BookedBy.translator =>
+                  context.t('Translator name', 'Tercümanın adı'),
+              },
+              child: TextFormField(
+                  controller: _bookedByName, validator: _required),
+            ),
+          ],
           const SizedBox(height: 20),
           FieldLabel(
             context.t('Number of people (patient included)',

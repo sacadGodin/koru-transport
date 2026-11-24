@@ -89,6 +89,8 @@ const form = {
   passengers: 2,
   notes: 'Third floor, no lift.',
   pickup: new GeoPoint(39.92, 32.85),
+  bookedByRole: 'translator',
+  bookedByName: 'Ahmet',
 };
 
 // Books like the website: next number, booking, tracking copy and a place

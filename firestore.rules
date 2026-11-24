@@ -241,7 +241,8 @@ service cloud.firestore {
       return b.keys().hasOnly(['ref', 'patient', 'phone', 'type', 'from',
              'branch', 'date', 'time', 'needs', 'passengers', 'notes',
              'pickup', 'stage', 'vehicle', 'driver', 'driverUid', 'trip',
-             'driverLocation', 'trackingId', 'createdAt', 'slot'])
+             'driverLocation', 'trackingId', 'createdAt', 'slot',
+             'bookedByRole', 'bookedByName'])
         && b.ref == ref
         && text(b.patient, 200)
         && text(b.phone, 50)
@@ -259,6 +260,9 @@ service cloud.firestore {
             || (b.passengers is int && b.passengers >= 1 && b.passengers <= 8))
         && b.notes is string && b.notes.size() <= 2000
         && (b.pickup == null || b.pickup is latlng)
+        // The coordinator or translator who made the booking, by name.
+        && b.bookedByRole in ['coordinator', 'translator']
+        && text(b.bookedByName, 200)
         && b.stage == 'newRequest'
         && b.vehicle == null
         && b.driver == null
@@ -338,7 +342,8 @@ service cloud.firestore {
         && isValidBooking(request.resource.data)
         && !request.resource.data.diff(resource.data).affectedKeys()
               .hasAny(['ref', 'patient', 'phone', 'from', 'pickup', 'needs',
-                       'passengers', 'notes', 'createdAt', 'trackingId'])
+                       'passengers', 'notes', 'createdAt', 'trackingId',
+                       'bookedByRole', 'bookedByName'])
         && (request.resource.data.get('driverUid', null) == null
             || get(/databases/$(database)/documents/drivers/$(request.resource.data.driverUid))
                  .data.get('active', false) == true)

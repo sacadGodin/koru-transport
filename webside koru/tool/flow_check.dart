@@ -76,6 +76,8 @@ Future<void> runFlow() async {
     needs: {MobilityNeed.wheelchair, MobilityNeed.companion},
     passengers: 2,
     notes: 'Third floor, no lift.',
+    bookedBy: BookedBy.translator,
+    bookedByName: 'Ahmet',
     pickup: const LatLng(39.92, 32.85),
   );
   final ref = receipt.booking.ref;

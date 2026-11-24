@@ -138,6 +138,17 @@ extension MobilityNeedText on MobilityNeed {
       };
 }
 
+// Who filled in the booking form for the patient. Saved by name in the
+// booking's "bookedByRole" field.
+enum BookedBy { coordinator, translator }
+
+extension BookedByText on BookedBy {
+  String label(BuildContext context) => switch (this) {
+        BookedBy.coordinator => context.t('Coordinator', 'Koordinatör'),
+        BookedBy.translator => context.t('Translator', 'Tercüman'),
+      };
+}
+
 // The stages a booking moves through, in order. The admin does every step:
 // New request -> (confirm) -> Confirmed -> (reserve) -> Reserved
 // -> (assign driver) -> Arranged.
@@ -276,6 +287,8 @@ class Booking {
     this.passengers = 1,
     this.notes = '',
     this.pickup,
+    this.bookedBy,
+    this.bookedByName = '',
     this.stage = Stage.newRequest,
   });
 
@@ -295,6 +308,10 @@ class Booking {
   final String notes;
   // Pickup point the patient tapped on the map (null if not set).
   final LatLng? pickup;
+  // The coordinator or translator who made the booking, and their name
+  // (null and empty on bookings made before this was asked).
+  final BookedBy? bookedBy;
+  final String bookedByName;
 
   // These change while the admin works on the booking.
   TransportType type;
@@ -349,6 +366,8 @@ class Booking {
         passengers: passengers,
         notes: notes,
         pickup: pickup,
+        bookedBy: bookedBy,
+        bookedByName: bookedByName,
         stage: stage,
       )
         ..vehicle = vehicle
@@ -538,6 +557,8 @@ class BookingStore extends ChangeNotifier {
     required Set<MobilityNeed> needs,
     required int passengers,
     required String notes,
+    required BookedBy bookedBy,
+    required String bookedByName,
     LatLng? pickup,
   }) async {
     final code = _newTrackingCode();
@@ -557,6 +578,8 @@ class BookingStore extends ChangeNotifier {
         passengers: passengers,
         notes: notes,
         pickup: pickup,
+        bookedBy: bookedBy,
+        bookedByName: bookedByName,
       )..trackingId = trackingIdFor('KR-$n', code);
       booking.slot = slotOf(booking);
       final takeSlot = await _moveSlot(tx, null, booking.slot, booking.ref);
@@ -713,6 +736,8 @@ class BookingStore extends ChangeNotifier {
         'pickup': b.pickup == null
             ? null
             : GeoPoint(b.pickup!.latitude, b.pickup!.longitude),
+        'bookedByRole': b.bookedBy?.name,
+        'bookedByName': b.bookedByName,
         'stage': b.stage.name,
         'vehicle': b.vehicle,
         'driver': b.driver,
@@ -727,6 +752,7 @@ class BookingStore extends ChangeNotifier {
     final pickup = d['pickup'] as GeoPoint?;
     final driverLocation = d['driverLocation'] as GeoPoint?;
     final trip = d['trip'] as String?;
+    final bookedBy = d['bookedByRole'] as String?;
     return Booking(
       ref: d['ref'] as String,
       patient: d['patient'] as String? ?? '',
@@ -743,6 +769,8 @@ class BookingStore extends ChangeNotifier {
       passengers: d['passengers'] as int? ?? 1,
       notes: d['notes'] as String? ?? '',
       pickup: pickup == null ? null : LatLng(pickup.latitude, pickup.longitude),
+      bookedBy: bookedBy == null ? null : BookedBy.values.asNameMap()[bookedBy],
+      bookedByName: d['bookedByName'] as String? ?? '',
       stage: Stage.values.byName(d['stage'] as String),
     )
       ..vehicle = d['vehicle'] as String?

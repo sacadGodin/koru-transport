@@ -365,7 +365,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                     DataRow(cells: [
                       DataCell(Text(b.ref,
                           style: const TextStyle(fontWeight: FontWeight.w800))),
-                      // Name, and the phone to call them on.
+                      // Name, the phone to call them on, and who booked it.
                       DataCell(Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -374,6 +374,12 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                             Text(b.phone,
                                 style: const TextStyle(
                                     fontSize: 12, color: AppColors.muted)),
+                            if (b.bookedBy != null)
+                              Text(
+                                  '${context.t('Booked by', 'Rezervasyonu yapan')}: '
+                                  '${b.bookedBy!.label(context)}, ${b.bookedByName}',
+                                  style: const TextStyle(
+                                      fontSize: 12, color: AppColors.muted)),
                           ])),
                       DataCell(Row(mainAxisSize: MainAxisSize.min, children: [
                         Icon(b.type.icon, size: 18, color: AppColors.blue),
