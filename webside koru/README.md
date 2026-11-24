@@ -131,7 +131,7 @@ webside koru/
 
 1. Connects to Firebase **and** loads the saved main color, in parallel.
 2. If started with `--dart-define=USE_EMULATORS=true`, points Auth (9099) and Firestore (8080) at `localhost`.
-3. `staffAuth.load()` — if a staff member or driver was signed in before the refresh, they stay signed in.
+3. `staffAuth.load()` — a sign-in lasts only while the tab is open (Firebase session persistence): a refresh keeps it, a new tab or a restarted browser shows the sign-in page.
 4. `runApp(KoruApp())` — builds `MaterialApp` with the theme, the current language and the routes.
 
 `KoruApp` rebuilds when:

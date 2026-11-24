@@ -45,9 +45,17 @@ class StaffAuth extends ChangeNotifier {
   // The signed-in driver's name, shown on the driver dashboard.
   String driverName = '';
 
-  // Called once at start-up: Firebase remembers the last sign-in, so a staff
-  // member or driver stays signed in after a page refresh.
+  // Called once at start-up. A sign-in only lasts while the tab is open: a
+  // page refresh keeps it, but opening the site again in a new tab or after
+  // closing the browser shows the sign-in page.
   Future<void> load() async {
+    if (kIsWeb) {
+      try {
+        await _auth.setPersistence(Persistence.SESSION);
+      } catch (e) {
+        debugPrint('Setting sign-in persistence failed: $e');
+      }
+    }
     final user = await _auth.authStateChanges().first;
     if (user == null) return;
     // Both lists are checked at the same time: each check is a trip to the
