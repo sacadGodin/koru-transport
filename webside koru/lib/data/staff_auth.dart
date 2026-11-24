@@ -158,7 +158,8 @@ class StaffAuth extends ChangeNotifier {
         options: DefaultFirebaseOptions.currentPlatform);
     final auth = FirebaseAuth.instanceFor(app: app);
     if (const bool.fromEnvironment('USE_EMULATORS')) {
-      await auth.useAuthEmulator('localhost', 9099);
+      await auth.useAuthEmulator('localhost',
+          const int.fromEnvironment('AUTH_PORT', defaultValue: 9099));
     }
     return auth;
   }
